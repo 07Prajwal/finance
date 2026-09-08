@@ -23,6 +23,7 @@ import {
   spendStats,
   sumAmounts,
   validateCalcInputs,
+  xirr,
   yearlyByMonth,
 } from "./finance.js";
 
@@ -290,5 +291,31 @@ describe("holding sort", () => {
     assert.equal(sortHoldings(rows, "market-asc")[0].name, "B");
     assert.equal(sortHoldings(rows, "gainPct-desc")[0].name, "B");
     assert.equal(sortHoldings(rows, "cost-desc")[0].name, "A");
+  });
+  it("defaults to alphabetical name order", () => {
+    const mixed = [{ name: "Reliance" }, { name: "HDFC Bank" }, { name: "Adani Ports" }];
+    assert.deepEqual(sortHoldings(mixed).map((r) => r.name), ["Adani Ports", "HDFC Bank", "Reliance"]);
+    assert.equal(sortHoldings(mixed, "name-desc")[0].name, "Reliance");
+  });
+});
+
+describe("XIRR", () => {
+  it("matches the Excel sample cash flows", () => {
+    const res = xirr([
+      { date: "2008-01-01", amount: -10000 },
+      { date: "2008-03-01", amount: 2750 },
+      { date: "2008-10-30", amount: 4250 },
+      { date: "2009-02-15", amount: 3250 },
+      { date: "2009-04-01", amount: 2750 },
+    ]);
+    assert.equal(res.ok, true);
+    close(res.rate, 0.373362535, 1e-5);
+  });
+  it("rejects cash flows that cannot produce a rate", () => {
+    assert.equal(xirr([{ date: "2026-01-01", amount: -100 }]).ok, false);
+    assert.equal(xirr([
+      { date: "2026-01-01", amount: -100 },
+      { date: "2026-01-01", amount: 120 },
+    ]).ok, false);
   });
 });

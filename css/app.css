@@ -112,7 +112,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin-top: 0;
 }
 .metrics.metrics-2 { grid-template-columns: repeat(2, 1fr); }
-#pf-metrics { grid-template-columns: repeat(5, 1fr); }
+#pf-metrics { grid-template-columns: repeat(6, 1fr); }
 .metric {
   background: var(--surface); border-radius: var(--radius); padding: 20px 16px;
   text-align: left;

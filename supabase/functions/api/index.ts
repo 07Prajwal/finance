@@ -47,7 +47,7 @@ async function listAll(client) {
     client.from("expenses").select("*").order("date", { ascending: false }),
     client.from("holdings").select("*"),
     client.from("settings").select("value").eq("key", "fx").maybeSingle(),
-    client.from("trades").select("realised, side"),
+    client.from("trades").select("id, holding_id, side, qty, price, date, cost_inr, proceeds_inr, realised"),
   ]);
   for (const r of [exp, hold, fxRow, trades]) {
     if (r.error) throw r.error;
@@ -65,7 +65,7 @@ async function listAll(client) {
     else if (row.sleeve === "foreign") foreign.push(h);
     else indian.push(h);
   }
-  return { expenses: exp.data || [], portfolio: { fx, realised, indian, mf, foreign } };
+  return { expenses: exp.data || [], portfolio: { fx, realised, indian, mf, foreign, trades: trades.data || [] } };
 }
 
 async function fxOf(client) {

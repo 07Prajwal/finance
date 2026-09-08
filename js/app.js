@@ -25,7 +25,7 @@ let catChartType = "";
 let typeChartMonth = Finance.thisMonth();
 let typeChartCategory = "";
 let yearChartYear = String(new Date().getFullYear());
-let pfSort = "market-desc";
+let pfSort = Finance.DEFAULT_HOLDING_SORT;
 let sleeve = "indian";
 let calcKind = "sip";
 let calcState = { monthly: 10000, rate: 12, years: 10, step: 10, lump: 100000, loan: 2500000, loanRate: 8.5, tenure: 20 };
@@ -536,6 +536,7 @@ function renderPortfolio() {
     { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.gainPct), tone: cls(p.total.gain) },
     { label: "Unrealised P/L %", value: pct(p.total.gainPct), tone: cls(p.total.gain) },
     { label: "Realised P/L", value: rupee(p.realised), tone: cls(p.realised) },
+    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs dated buys" : "Money-weighted" },
   ]);
   doughnut("alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks"], [p.i.market, p.m.market, p.f.market]);
   bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign"], [p.i.gain, p.m.gain, p.f.gain], "#1D1D1F");
@@ -547,15 +548,15 @@ function renderPortfolio() {
   const fxCol = sleeve === "foreign";
   const unit = sleeve === "mf" ? "Units" : "Shares";
   const sortEl = $("pf-sort");
-  if (sortEl && !sortEl.dataset.ready) {
+  if (sortEl && sortEl.dataset.ready !== "name-v1") {
     sortEl.innerHTML = Finance.HOLDING_SORTS.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
-    sortEl.dataset.ready = "1";
+    sortEl.dataset.ready = "name-v1";
   }
   if (sortEl) sortEl.value = pfSort;
   $("pf-head").innerHTML = `<tr>
     <th>Holding</th><th>Platform</th><th class="num">Price</th><th class="num">Day</th>
     <th class="num">${unit}</th><th class="num">Avg</th>
-    <th class="num">Invested</th><th class="num">Current</th><th class="num">Profit</th><th class="num">Profit %</th>
+    <th class="num">Invested</th><th class="num">Current</th><th class="num">Profit</th><th class="num">Profit %</th><th class="num">XIRR</th>
     <th class="owner-only"></th>
   </tr>`;
   $("pf-rows").innerHTML = rows.map((r) => `
@@ -570,6 +571,7 @@ function renderPortfolio() {
       <td class="num">${rupee(r.market)}</td>
       <td class="num ${r.gain >= 0 ? "gain" : "loss"}">${rupee(r.gain)}</td>
       <td class="num ${r.gainPct >= 0 ? "gain" : "loss"}">${pct(r.gainPct)}</td>
+      <td class="num ${r.xirr == null ? "" : r.xirr >= 0 ? "gain" : "loss"}">${r.xirr == null ? "—" : pct(r.xirr)}</td>
       <td class="owner-only actions-cell">
         <button class="icon-btn buy" type="button" data-trade="buy" data-id="${esc(r.id)}">Buy</button>
         <button class="icon-btn sell" type="button" data-trade="sell" data-id="${esc(r.id)}">Sell</button>
@@ -582,6 +584,7 @@ function renderPortfolio() {
     <td class="num">${rupee(t.market)}</td>
     <td class="num ${t.gain >= 0 ? "gain" : "loss"}">${rupee(t.gain)}</td>
     <td class="num ${t.gainPct >= 0 ? "gain" : "loss"}">${pct(t.gainPct)}</td>
+    <td class="num ${t.xirr == null ? "" : t.xirr >= 0 ? "gain" : "loss"}">${t.xirr == null ? "—" : pct(t.xirr)}</td>
     <td class="owner-only"></td>
   </tr>`;
 }
@@ -1076,11 +1079,11 @@ $("act-viewall").addEventListener("click", () => {
   renderExpenseActivity();
 });
 $("pf-sort").addEventListener("change", (e) => {
-  pfSort = e.target.value || "market-desc";
+  pfSort = e.target.value || Finance.DEFAULT_HOLDING_SORT;
   renderPortfolio();
 });
 $("pf-sort-clear").addEventListener("click", () => {
-  pfSort = "market-desc";
+  pfSort = Finance.DEFAULT_HOLDING_SORT;
   if ($("pf-sort")) $("pf-sort").value = pfSort;
   renderPortfolio();
 });

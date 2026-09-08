@@ -37,14 +37,27 @@ export function sleeveTotals(rows) {
 export function enrichPortfolio(portfolio) {
   const fx = portfolio.fx || { USDINR: 0, EURINR: 0 };
   const realised = Number(portfolio.realised) || 0;
+  const trades = portfolio.trades || [];
+  const asOf = new Date();
   const indian = (portfolio.indian || []).map((h) => enrichHolding(h, fx));
   const mf = (portfolio.mf || []).map((h) => enrichHolding(h, fx));
   const foreign = (portfolio.foreign || []).map((h) => enrichHolding(h, fx));
-  const i = sleeveTotals(indian);
-  const m = sleeveTotals(mf);
-  const f = sleeveTotals(foreign);
-  const total = sleeveTotals([...indian, ...mf, ...foreign]);
-  return { fx, realised, indian, mf, foreign, i, m, f, total };
+  const withXirr = (rows) => rows.map((h) => ({
+    ...h,
+    xirr: xirrRate(cashflowsForHoldings([h], trades, asOf)),
+  }));
+  const indianX = withXirr(indian);
+  const mfX = withXirr(mf);
+  const foreignX = withXirr(foreign);
+  const i = sleeveTotals(indianX);
+  const m = sleeveTotals(mfX);
+  const f = sleeveTotals(foreignX);
+  const total = sleeveTotals([...indianX, ...mfX, ...foreignX]);
+  i.xirr = xirrRate(cashflowsForHoldings(indianX, trades, asOf));
+  m.xirr = xirrRate(cashflowsForHoldings(mfX, trades, asOf));
+  f.xirr = xirrRate(cashflowsForHoldings(foreignX, trades, asOf));
+  total.xirr = xirrRate(cashflowsForHoldings([...indianX, ...mfX, ...foreignX], trades, asOf));
+  return { fx, realised, trades, indian: indianX, mf: mfX, foreign: foreignX, i, m, f, total };
 }
 
 function isPositiveNumber(n) {
@@ -246,7 +259,11 @@ export function sumAmounts(expenses) {
   return (expenses || []).reduce((s, e) => s + Number(e.amount || 0), 0);
 }
 
+export const DEFAULT_HOLDING_SORT = "name-asc";
+
 export const HOLDING_SORTS = [
+  { id: "name-asc", key: "name", dir: "asc", kind: "text", label: "Name · A to Z" },
+  { id: "name-desc", key: "name", dir: "desc", kind: "text", label: "Name · Z to A" },
   { id: "market-desc", key: "market", dir: "desc", label: "Current · high to low" },
   { id: "market-asc", key: "market", dir: "asc", label: "Current · low to high" },
   { id: "gain-desc", key: "gain", dir: "desc", label: "Profit · high to low" },
@@ -257,15 +274,117 @@ export const HOLDING_SORTS = [
   { id: "cost-asc", key: "cost", dir: "asc", label: "Invested · low to high" },
 ];
 
-export function sortHoldings(rows, sortId = "market-desc") {
+export function sortHoldings(rows, sortId = DEFAULT_HOLDING_SORT) {
   const spec = HOLDING_SORTS.find((s) => s.id === sortId) || HOLDING_SORTS[0];
   const mul = spec.dir === "asc" ? 1 : -1;
   return (rows || []).slice().sort((a, b) => {
+    if (spec.kind === "text") {
+      const av = String(a[spec.key] || a.symbol || "");
+      const bv = String(b[spec.key] || b.symbol || "");
+      return av.localeCompare(bv, "en", { numeric: true, sensitivity: "base" }) * mul;
+    }
     const av = Number(a[spec.key]) || 0;
     const bv = Number(b[spec.key]) || 0;
-    if (av === bv) return String(a.name || a.symbol || "").localeCompare(String(b.name || b.symbol || ""));
+    if (av === bv) return String(a.name || a.symbol || "").localeCompare(String(b.name || b.symbol || ""), "en", { numeric: true, sensitivity: "base" });
     return (av - bv) * mul;
   });
+}
+
+function dateUTC(d) {
+  const s = String(d || "").slice(0, 10);
+  const [y, m, day] = s.split("-").map(Number);
+  if (!y || !m || !day) return NaN;
+  return Date.UTC(y, m - 1, day);
+}
+
+function isoDate(d) {
+  if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+  const dt = d instanceof Date ? d : new Date();
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+export function tradeCashflows(trades) {
+  return (trades || []).map((t) => {
+    const date = isoDate(t.date);
+    if (!date || Number.isNaN(dateUTC(date))) return null;
+    if (t.side === "buy") {
+      const amount = -Math.abs(Number(t.cost_inr != null ? t.cost_inr : Number(t.qty) * Number(t.price)));
+      return amount ? { date, amount } : null;
+    }
+    const amount = Math.abs(Number(t.proceeds_inr != null ? t.proceeds_inr : Number(t.qty) * Number(t.price)));
+    return amount ? { date, amount } : null;
+  }).filter(Boolean);
+}
+
+export function xirr(cashflows, guess = 0.1) {
+  const flows = (cashflows || [])
+    .filter((f) => f && f.date && Number.isFinite(Number(f.amount)) && Number(f.amount) !== 0)
+    .map((f) => ({ date: isoDate(f.date), amount: Number(f.amount) }))
+    .sort((a, b) => dateUTC(a.date) - dateUTC(b.date));
+  if (flows.length < 2) return { ok: false };
+  const t0 = dateUTC(flows[0].date);
+  const t1 = dateUTC(flows[flows.length - 1].date);
+  if (!(t1 > t0)) return { ok: false };
+  const hasPos = flows.some((f) => f.amount > 0);
+  const hasNeg = flows.some((f) => f.amount < 0);
+  if (!hasPos || !hasNeg) return { ok: false };
+
+  const yearFrac = (d) => (dateUTC(d) - t0) / (365 * 24 * 3600 * 1000);
+  const npv = (rate) => flows.reduce((s, f) => s + f.amount / (1 + rate) ** yearFrac(f.date), 0);
+  const deriv = (rate) => flows.reduce((s, f) => {
+    const t = yearFrac(f.date);
+    return s - (t * f.amount) / (1 + rate) ** (t + 1);
+  }, 0);
+
+  let rate = guess;
+  for (let i = 0; i < 50; i += 1) {
+    if (rate <= -0.999999) rate = -0.999999;
+    const y = npv(rate);
+    const dy = deriv(rate);
+    if (!Number.isFinite(y) || !Number.isFinite(dy) || Math.abs(dy) < 1e-12) break;
+    const next = rate - y / dy;
+    if (!Number.isFinite(next)) break;
+    if (Math.abs(next - rate) < 1e-10) {
+      rate = next;
+      break;
+    }
+    rate = next;
+  }
+  if (Number.isFinite(rate) && Math.abs(npv(rate)) < 1e-6) return { ok: true, rate };
+
+  let lo = -0.9999;
+  let hi = 10;
+  let nLo = npv(lo);
+  let nHi = npv(hi);
+  if (!Number.isFinite(nLo) || !Number.isFinite(nHi) || nLo * nHi > 0) return { ok: false };
+  for (let i = 0; i < 80; i += 1) {
+    const mid = (lo + hi) / 2;
+    const nMid = npv(mid);
+    if (!Number.isFinite(nMid)) return { ok: false };
+    if (Math.abs(nMid) < 1e-8) return { ok: true, rate: mid };
+    if (nLo * nMid <= 0) {
+      hi = mid;
+      nHi = nMid;
+    } else {
+      lo = mid;
+      nLo = nMid;
+    }
+  }
+  const mid = (lo + hi) / 2;
+  return Number.isFinite(mid) ? { ok: true, rate: mid } : { ok: false };
+}
+
+export function cashflowsForHoldings(holdings, trades, asOf = new Date()) {
+  const ids = new Set((holdings || []).map((h) => h.id).filter(Boolean));
+  const flows = tradeCashflows((trades || []).filter((t) => ids.has(t.holding_id)));
+  const market = (holdings || []).reduce((s, h) => s + (Number(h.market) || 0), 0);
+  if (market > 0) flows.push({ date: isoDate(asOf), amount: market });
+  return flows;
+}
+
+function xirrRate(flows) {
+  const res = xirr(flows);
+  return res.ok ? res.rate : null;
 }
 
 const RATE_MIN = 0.1;
