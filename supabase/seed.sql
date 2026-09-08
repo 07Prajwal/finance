@@ -1,0 +1,5 @@
+-- Personal expenses and holdings are not stored in git.
+-- They live only in the Supabase database.
+-- To load FX for a brand-new empty project, run:
+-- insert into settings (key, value) values ('fx', '{"USDINR":0,"EURINR":0}'::jsonb)
+-- on conflict (key) do update set value = excluded.value;

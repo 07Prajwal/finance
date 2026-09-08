@@ -1,0 +1,6 @@
+.DS_Store
+.env
+.supabase
+supabase/.temp
+node_modules
+*.numbers

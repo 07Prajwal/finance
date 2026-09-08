@@ -1,0 +1,7 @@
+# Custom JWT (not Supabase Auth). Gateway must not require a user JWT.
+
+[functions.login]
+verify_jwt = false
+
+[functions.api]
+verify_jwt = false

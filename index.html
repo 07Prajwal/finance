@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Finance</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="setup-gate" class="setup-gate hidden">
+    <div class="login-card">
+      <h1>Almost ready</h1>
+      <p>Paste your Supabase URL and anon key into <code>js/config.js</code>, then deploy the Edge Functions. Until then this hosted copy cannot sign in.</p>
+    </div>
+  </div>
+
+  <div id="login-gate" class="login-gate">
+    <div class="login-card">
+      <div class="kicker">Finance</div>
+      <h1>Welcome back.</h1>
+      <p>Enter the password to open the tracker.</p>
+      <form id="login-form">
+        <input type="password" name="password" autocomplete="current-password" required placeholder="Password" />
+        <button class="btn" type="submit">Continue</button>
+        <p id="login-error" class="status bad hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="local-banner" class="banner hidden">Data on this device only until Supabase is connected — iPhone and Mac will not share logs yet.</div>
+
+  <div id="app-shell" class="app-shell locked">
+    <nav class="nav">
+      <div class="nav-inner">
+        <a class="wordmark" href="#home">Finance</a>
+        <div class="nav-links">
+          <a href="#home" data-nav="home">Overview</a>
+          <a href="#expenses" data-nav="expenses">Expenses</a>
+          <a href="#portfolio" data-nav="portfolio">Portfolio</a>
+          <a href="#calculators" data-nav="calculators">Calculators</a>
+          <button class="nav-cta owner-only" type="button" id="nav-add-expense">Log expense</button>
+        </div>
+        <div class="nav-meta">
+          <span class="role-chip" id="role-chip"></span>
+          <button class="sign-out" type="button" id="sign-out">Sign out</button>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+      <section id="home" class="page">
+        <div class="hero">
+          <div class="kicker">Overview</div>
+          <h1>Spending and<br>investments.</h1>
+          <p class="lead">Track spending, watch your portfolio, and run SIP or EMI maths.</p>
+        </div>
+        <div class="surface">
+          <div class="wrap section overview-grid">
+            <div class="overview-block">
+              <h2>Investments</h2>
+              <div class="metrics" id="home-invest-metrics"></div>
+              <div class="card" style="margin-top:16px">
+                <h3>Portfolio mix</h3>
+                <div class="chart-box"><canvas id="home-alloc-chart"></canvas></div>
+              </div>
+            </div>
+            <div class="overview-block">
+              <h2>Spending</h2>
+              <div class="metrics metrics-2" id="home-spend-metrics"></div>
+              <div class="card" style="margin-top:16px">
+                <h3>This month by category</h3>
+                <div class="chart-box"><canvas id="home-spend-chart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="expenses" class="page">
+        <div class="hero">
+          <div class="kicker">Expense tracker</div>
+          <h1>See where it goes.</h1>
+          <p class="lead">Log spending, then see it by category, type, and month.</p>
+        </div>
+        <div class="wrap section" style="padding-top:0">
+          <div class="split">
+            <span class="status" id="expense-status"></span>
+            <button class="btn sm owner-only" type="button" id="add-expense">Add expense</button>
+          </div>
+          <div class="metrics" id="expense-metrics"></div>
+          <div class="filters" id="type-filters" style="margin:20px 0 12px"></div>
+          <div class="grid-2" style="margin:0 0 20px">
+            <div class="card">
+              <h3>By category</h3>
+              <div class="chart-box"><canvas id="cat-chart"></canvas></div>
+            </div>
+            <div class="card">
+              <h3>By type</h3>
+              <div class="chart-box"><canvas id="type-chart"></canvas></div>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:20px">
+            <h3>Yearly total</h3>
+            <div class="chart-box"><canvas id="month-chart"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>Activity</h3>
+            <div style="overflow:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Type</th><th>Category</th><th>Account</th><th>Notes</th><th class="num">Amount</th>
+                    <th class="owner-only"></th>
+                  </tr>
+                </thead>
+                <tbody id="expense-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="portfolio" class="page">
+        <div class="hero">
+          <div class="kicker">Investments</div>
+          <h1>Indian, mutual, foreign.</h1>
+          <p class="lead">Live prices when the market feed allows it. Buys and sells update cost, average, and realised gain.</p>
+        </div>
+        <div class="wrap section" style="padding-top:0">
+          <div class="split">
+            <p class="status" id="quote-status">Using last saved prices.</p>
+            <div class="row-actions">
+              <button class="btn sm" id="refresh-quotes" type="button">Update live prices</button>
+              <button class="btn secondary sm owner-only" id="new-buy" type="button">New buy</button>
+            </div>
+          </div>
+          <div class="metrics" id="pf-metrics"></div>
+          <div class="grid-2" style="margin:20px 0">
+            <div class="card">
+              <h3>Allocation</h3>
+              <div class="chart-box"><canvas id="alloc-chart"></canvas></div>
+            </div>
+            <div class="card">
+              <h3>Gain by sleeve</h3>
+              <div class="chart-box"><canvas id="sleeve-chart"></canvas></div>
+            </div>
+          </div>
+          <div class="tabs" id="pf-tabs">
+            <button class="on" data-sleeve="indian" type="button">Indian stocks</button>
+            <button data-sleeve="mf" type="button">Mutual funds</button>
+            <button data-sleeve="foreign" type="button">Foreign stocks</button>
+          </div>
+          <div class="card">
+            <div style="overflow:auto">
+              <table>
+                <thead id="pf-head"></thead>
+                <tbody id="pf-rows"></tbody>
+                <tfoot id="pf-foot"></tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="calculators" class="page">
+        <div class="hero">
+          <div class="kicker">Planning tools</div>
+          <h1>SIP, step-up, lumpsum, EMI.</h1>
+          <p class="lead">Type a number or drag the slider. Estimates only.</p>
+        </div>
+        <div class="wrap section" style="padding-top:0">
+          <div class="tabs" id="calc-tabs">
+            <button class="on" data-calc="sip" type="button">SIP</button>
+            <button data-calc="stepup" type="button">Step-up SIP</button>
+            <button data-calc="lumpsum" type="button">Lumpsum</button>
+            <button data-calc="emi" type="button">EMI</button>
+          </div>
+          <div class="calc-layout">
+            <div class="card" id="calc-controls"></div>
+            <div class="card">
+              <p class="tiny" id="calc-kicker">Estimated value</p>
+              <div class="result-hero" id="calc-hero">—</div>
+              <div class="result-grid" id="calc-stats"></div>
+              <div class="chart-box" style="margin-top:24px"><canvas id="calc-chart"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Live quotes use Yahoo Finance via a public proxy when the browser allows it.
+    </footer>
+  </div>
+
+  <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal" id="modal"></div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

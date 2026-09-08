@@ -1,0 +1,11 @@
+{
+  "name": "finance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test js/finance.test.js",
+    "start": "python3 -m http.server 8080",
+    "hash": "node scripts/hash-password.js",
+    "seed:sql": "node scripts/generate-seed.js"
+  }
+}
