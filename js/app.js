@@ -18,7 +18,14 @@ const charts = {};
 let session = null;
 let expenses = [];
 let portfolio = structuredClone(SEED_PORTFOLIO);
-let expenseFilter = "All";
+let activityFilter = { month: "", type: "", category: "", account: "", notes: "" };
+let activityViewAll = false;
+let catChartMonth = Finance.thisMonth();
+let catChartType = "";
+let typeChartMonth = Finance.thisMonth();
+let typeChartCategory = "";
+let yearChartYear = String(new Date().getFullYear());
+let pfSort = "market-desc";
 let sleeve = "indian";
 let calcKind = "sip";
 let calcState = { monthly: 10000, rate: 12, years: 10, step: 10, lump: 100000, loan: 2500000, loanRate: 8.5, tenure: 20 };
@@ -399,30 +406,62 @@ function trashSvg() {
   return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M8 7l.8 13h6.4L16 7"/></svg>`;
 }
 
-function renderExpenses() {
-  const s = Finance.spendStats(expenses, new Date(), expenseFilter);
-  const our = s.inMonth.filter((e) => e.type === "Our Expense").reduce((a, e) => a + Number(e.amount), 0);
-  $("expense-metrics").innerHTML = metricHTML([
-    { label: "This month", value: rupee(s.monthTotal) },
-    { label: "Our expense", value: rupee(our) },
-    { label: "Categories", value: String(Object.keys(s.byCat).length) },
-    { label: "Year total", value: rupee(s.yearTotal) },
-  ]);
-  const cats = Object.keys(s.byCat);
-  doughnut("cat-chart", cats.length ? cats : ["No spend yet"], cats.length ? cats.map((c) => s.byCat[c]) : [1]);
-  const types = Object.keys(s.byType);
-  doughnut("type-chart", types.length ? types : ["No spend yet"], types.length ? types.map((t) => s.byType[t]) : [1]);
-  bar("month-chart", s.byMonth.map((m) => m.label), s.byMonth.map((m) => m.total));
+function fillSelect(id, options, selected, allLabel) {
+  const el = $(id);
+  if (!el) return;
+  const html = [
+    allLabel != null ? `<option value="">${esc(allLabel)}</option>` : "",
+    ...options.map((o) => {
+      const value = o.value ?? o;
+      const label = o.label ?? o;
+      return `<option value="${esc(value)}"${String(value) === String(selected) ? " selected" : ""}>${esc(label)}</option>`;
+    }),
+  ].join("");
+  if (el.innerHTML === html) {
+    el.value = selected;
+    return;
+  }
+  el.innerHTML = html;
+  el.value = selected;
+}
 
-  const filters = ["All", ...EXPENSE_TYPES];
-  $("type-filters").innerHTML = filters.map((f) =>
-    `<button data-f="${esc(f)}" class="${expenseFilter === f ? "on" : ""}" type="button">${esc(f)}</button>`
-  ).join("");
+function monthOptions(extra) {
+  const keys = Finance.expenseMonthKeys(expenses);
+  if (extra && !keys.includes(extra)) keys.unshift(extra);
+  return keys.map((k) => ({ value: k, label: Finance.monthLabel(k) }));
+}
 
-  const rows = [...expenses]
-    .filter((e) => expenseFilter === "All" || e.type === expenseFilter)
+function yearOptions(extra) {
+  const years = Finance.expenseYears(expenses);
+  if (extra && !years.includes(String(extra))) years.unshift(String(extra));
+  return years;
+}
+
+function doughnutOrEmpty(id, grouped) {
+  const labels = Object.keys(grouped);
+  doughnut(id, labels.length ? labels : ["No spend yet"], labels.length ? labels.map((k) => grouped[k]) : [1]);
+}
+
+function renderExpenseCharts() {
+  doughnutOrEmpty("cat-chart", Finance.groupSpend(
+    Finance.filterExpenses(expenses, { month: catChartMonth, type: catChartType }),
+    "category"
+  ));
+  doughnutOrEmpty("type-chart", Finance.groupSpend(
+    Finance.filterExpenses(expenses, { month: typeChartMonth, category: typeChartCategory }),
+    "type"
+  ));
+  const byMonth = Finance.yearlyByMonth(expenses, yearChartYear);
+  bar("month-chart", byMonth.map((m) => m.label), byMonth.map((m) => m.total));
+}
+
+function renderExpenseActivity() {
+  const filtered = Finance.filterExpenses(expenses, activityFilter)
+    .slice()
     .sort((a, b) => `${b.date}${b.time || ""}`.localeCompare(`${a.date}${a.time || ""}`));
-  $("expense-rows").innerHTML = rows.map((e) => `
+  const shown = activityViewAll ? filtered : filtered.slice(0, 20);
+  const sum = Finance.sumAmounts(shown);
+  $("expense-rows").innerHTML = shown.map((e) => `
     <tr>
       <td>${esc(e.date)} <span class="tiny">${esc(e.time || "")}</span></td>
       <td><span class="chip">${esc(e.type)}</span></td>
@@ -434,6 +473,47 @@ function renderExpenses() {
         <button class="icon-btn" type="button" data-del="${esc(e.id)}" aria-label="Delete expense">${trashSvg()}</button>
       </td>
     </tr>`).join("");
+  $("expense-foot").innerHTML = `
+    <tr>
+      <td colspan="5">Sum of ${shown.length} row${shown.length === 1 ? "" : "s"}</td>
+      <td class="num">${rupee(sum, 2)}</td>
+      <td class="owner-only"></td>
+    </tr>`;
+  const meta = $("activity-meta");
+  if (meta) {
+    meta.textContent = activityViewAll || filtered.length <= 20
+      ? `${shown.length} of ${filtered.length}`
+      : `Recent ${shown.length} of ${filtered.length}`;
+  }
+  const viewBtn = $("act-viewall");
+  if (viewBtn) {
+    viewBtn.textContent = activityViewAll ? "Show recent 20" : "View all";
+    viewBtn.classList.toggle("hidden", filtered.length <= 20);
+  }
+}
+
+function renderExpenses() {
+  const s = Finance.spendStats(expenses, new Date());
+  const our = s.inMonth.filter((e) => e.type === "Our Expense").reduce((a, e) => a + Number(e.amount), 0);
+  $("expense-metrics").innerHTML = metricHTML([
+    { label: "This month", value: rupee(s.monthTotal) },
+    { label: "Our expense", value: rupee(our) },
+    { label: "Categories", value: String(Object.keys(s.byCat).length) },
+    { label: "Year total", value: rupee(s.yearTotal) },
+  ]);
+
+  fillSelect("cat-month", monthOptions(catChartMonth), catChartMonth);
+  fillSelect("cat-type", EXPENSE_TYPES, catChartType, "All types");
+  fillSelect("type-month", monthOptions(typeChartMonth), typeChartMonth);
+  fillSelect("type-category", EXPENSE_CATS, typeChartCategory, "All categories");
+  fillSelect("year-chart-year", yearOptions(yearChartYear).map((y) => ({ value: y, label: y })), yearChartYear);
+  fillSelect("act-month", monthOptions(), activityFilter.month, "All months");
+  fillSelect("act-type", EXPENSE_TYPES, activityFilter.type, "All types");
+  fillSelect("act-category", EXPENSE_CATS, activityFilter.category, "All categories");
+  fillSelect("act-account", EXPENSE_ACCOUNTS, activityFilter.account, "All accounts");
+
+  renderExpenseCharts();
+  renderExpenseActivity();
 }
 
 function renderPortfolio() {
@@ -450,14 +530,20 @@ function renderPortfolio() {
 
   const map = { indian: p.indian, mf: p.mf, foreign: p.foreign };
   const totals = { indian: p.i, mf: p.m, foreign: p.f };
-  const rows = map[sleeve].filter((r) => r.shares > 1e-9).slice().sort((a, b) => b.market - a.market);
+  const rows = Finance.sortHoldings(map[sleeve].filter((r) => r.shares > 1e-9), pfSort);
   const t = totals[sleeve];
   const fxCol = sleeve === "foreign";
   const unit = sleeve === "mf" ? "Units" : "Shares";
+  const sortEl = $("pf-sort");
+  if (sortEl && !sortEl.dataset.ready) {
+    sortEl.innerHTML = Finance.HOLDING_SORTS.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
+    sortEl.dataset.ready = "1";
+  }
+  if (sortEl) sortEl.value = pfSort;
   $("pf-head").innerHTML = `<tr>
     <th>Holding</th><th>Platform</th><th class="num">Price</th><th class="num">Day</th>
     <th class="num">${unit}</th><th class="num">Avg</th>
-    <th class="num">Invested</th><th class="num">Value</th><th class="num">P/L</th>
+    <th class="num">Invested</th><th class="num">Current</th><th class="num">Profit</th><th class="num">Profit %</th>
     <th class="owner-only"></th>
   </tr>`;
   $("pf-rows").innerHTML = rows.map((r) => `
@@ -470,7 +556,8 @@ function renderPortfolio() {
       <td class="num">${NUM.format(r.avg)}</td>
       <td class="num">${rupee(r.cost)}</td>
       <td class="num">${rupee(r.market)}</td>
-      <td class="num gain">${rupee(r.gain)} <div class="tiny">${pct(r.gainPct)}</div></td>
+      <td class="num ${r.gain >= 0 ? "gain" : "loss"}">${rupee(r.gain)}</td>
+      <td class="num ${r.gainPct >= 0 ? "gain" : "loss"}">${pct(r.gainPct)}</td>
       <td class="owner-only actions-cell">
         <button class="icon-btn buy" type="button" data-trade="buy" data-id="${esc(r.id)}">Buy</button>
         <button class="icon-btn sell" type="button" data-trade="sell" data-id="${esc(r.id)}">Sell</button>
@@ -481,7 +568,8 @@ function renderPortfolio() {
     <td class="num">${NUM.format(t.shares)}</td><td></td>
     <td class="num">${rupee(t.cost)}</td>
     <td class="num">${rupee(t.market)}</td>
-    <td class="num ${t.gain >= 0 ? "gain" : "loss"}">${rupee(t.gain)} <div class="tiny">${pct(t.gainPct)}</div></td>
+    <td class="num ${t.gain >= 0 ? "gain" : "loss"}">${rupee(t.gain)}</td>
+    <td class="num ${t.gainPct >= 0 ? "gain" : "loss"}">${pct(t.gainPct)}</td>
     <td class="owner-only"></td>
   </tr>`;
 }
@@ -940,11 +1028,42 @@ $("add-expense").addEventListener("click", startExpenseWizard);
 $("new-buy").addEventListener("click", () => openTradeModal("new"));
 $("refresh-quotes").addEventListener("click", refreshQuotes);
 
-$("type-filters").addEventListener("click", (e) => {
-  const b = e.target.closest("button");
-  if (!b) return;
-  expenseFilter = b.dataset.f;
-  renderExpenses();
+$("expenses").addEventListener("change", (e) => {
+  const id = e.target.id;
+  if (id === "cat-month") catChartMonth = e.target.value;
+  else if (id === "cat-type") catChartType = e.target.value;
+  else if (id === "type-month") typeChartMonth = e.target.value;
+  else if (id === "type-category") typeChartCategory = e.target.value;
+  else if (id === "year-chart-year") yearChartYear = e.target.value;
+  else if (id === "act-month") activityFilter.month = e.target.value;
+  else if (id === "act-type") activityFilter.type = e.target.value;
+  else if (id === "act-category") activityFilter.category = e.target.value;
+  else if (id === "act-account") activityFilter.account = e.target.value;
+  else return;
+  if (id.startsWith("act-")) renderExpenseActivity();
+  else renderExpenseCharts();
+});
+$("act-notes").addEventListener("input", (e) => {
+  activityFilter.notes = e.target.value;
+  renderExpenseActivity();
+});
+$("act-clear").addEventListener("click", () => {
+  activityFilter = { month: "", type: "", category: "", account: "", notes: "" };
+  activityViewAll = false;
+  $("act-notes").value = "";
+  $("act-month").value = "";
+  $("act-type").value = "";
+  $("act-category").value = "";
+  $("act-account").value = "";
+  renderExpenseActivity();
+});
+$("act-viewall").addEventListener("click", () => {
+  activityViewAll = !activityViewAll;
+  renderExpenseActivity();
+});
+$("pf-sort").addEventListener("change", (e) => {
+  pfSort = e.target.value || "market-desc";
+  renderPortfolio();
 });
 
 $("expense-rows").addEventListener("click", (e) => {

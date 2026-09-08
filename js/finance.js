@@ -185,6 +185,89 @@ export function spendStats(expenses, now = new Date(), typeFilter = "All") {
   };
 }
 
+export function monthLabel(yyyyMm) {
+  const raw = String(yyyyMm || "");
+  if (raw.length < 7) return raw;
+  const d = new Date(Number(raw.slice(0, 4)), Number(raw.slice(5, 7)) - 1, 1);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString("en", { month: "short", year: "numeric" });
+}
+
+export function expenseMonthKeys(expenses) {
+  return [...new Set((expenses || []).map((e) => monthKey(e.date)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a));
+}
+
+export function expenseYears(expenses) {
+  return [...new Set((expenses || []).map((e) => String(e.date || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))]
+    .sort((a, b) => b.localeCompare(a));
+}
+
+export function filterExpenses(expenses, filters = {}) {
+  const month = filters.month || "";
+  const type = filters.type || "";
+  const category = filters.category || "";
+  const account = filters.account || "";
+  const notes = String(filters.notes || "").trim().toLowerCase();
+  return (expenses || []).filter((e) => {
+    if (month && monthKey(e.date) !== month) return false;
+    if (type && e.type !== type) return false;
+    if (category && e.category !== category) return false;
+    if (account && e.account !== account) return false;
+    if (notes && !String(e.notes || "").toLowerCase().includes(notes)) return false;
+    return true;
+  });
+}
+
+export function groupSpend(expenses, key) {
+  const out = {};
+  for (const e of expenses || []) {
+    const k = e[key] || "Other";
+    out[k] = (out[k] || 0) + Number(e.amount);
+  }
+  return out;
+}
+
+export function yearlyByMonth(expenses, year) {
+  const y = String(year || "");
+  const byMonth = Array.from({ length: 12 }, (_, i) => ({
+    label: new Date(2000, i, 1).toLocaleString("en", { month: "short" }),
+    total: 0,
+  }));
+  for (const e of expenses || []) {
+    if (!String(e.date).startsWith(y)) continue;
+    const m = Number(String(e.date).slice(5, 7)) - 1;
+    if (m >= 0 && m < 12) byMonth[m].total += Number(e.amount);
+  }
+  return byMonth;
+}
+
+export function sumAmounts(expenses) {
+  return (expenses || []).reduce((s, e) => s + Number(e.amount || 0), 0);
+}
+
+export const HOLDING_SORTS = [
+  { id: "market-desc", key: "market", dir: "desc", label: "Current · high to low" },
+  { id: "market-asc", key: "market", dir: "asc", label: "Current · low to high" },
+  { id: "gain-desc", key: "gain", dir: "desc", label: "Profit · high to low" },
+  { id: "gain-asc", key: "gain", dir: "asc", label: "Profit · low to high" },
+  { id: "gainPct-desc", key: "gainPct", dir: "desc", label: "Profit % · high to low" },
+  { id: "gainPct-asc", key: "gainPct", dir: "asc", label: "Profit % · low to high" },
+  { id: "cost-desc", key: "cost", dir: "desc", label: "Invested · high to low" },
+  { id: "cost-asc", key: "cost", dir: "asc", label: "Invested · low to high" },
+];
+
+export function sortHoldings(rows, sortId = "market-desc") {
+  const spec = HOLDING_SORTS.find((s) => s.id === sortId) || HOLDING_SORTS[0];
+  const mul = spec.dir === "asc" ? 1 : -1;
+  return (rows || []).slice().sort((a, b) => {
+    const av = Number(a[spec.key]) || 0;
+    const bv = Number(b[spec.key]) || 0;
+    if (av === bv) return String(a.name || a.symbol || "").localeCompare(String(b.name || b.symbol || ""));
+    return (av - bv) * mul;
+  });
+}
+
 const RATE_MIN = 0.1;
 const RATE_MAX = 50;
 

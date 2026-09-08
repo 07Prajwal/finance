@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finance</title>
-  <link rel="stylesheet" href="css/app.css?v=4" />
+  <link rel="stylesheet" href="css/app.css?v=5" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -90,23 +90,51 @@
             <button class="btn sm owner-only" type="button" id="add-expense">Add expense</button>
           </div>
           <div class="metrics" id="expense-metrics"></div>
-          <div class="filters" id="type-filters" style="margin:20px 0 12px"></div>
-          <div class="grid-2" style="margin:0 0 20px">
+          <div class="grid-2" style="margin:20px 0">
             <div class="card">
-              <h3>By category</h3>
+              <div class="chart-head">
+                <h3>By category</h3>
+                <div class="chart-toolbar">
+                  <select id="cat-month" aria-label="Category chart month"></select>
+                  <select id="cat-type" aria-label="Category chart type"></select>
+                </div>
+              </div>
               <div class="chart-box"><canvas id="cat-chart"></canvas></div>
             </div>
             <div class="card">
-              <h3>By type</h3>
+              <div class="chart-head">
+                <h3>By type</h3>
+                <div class="chart-toolbar">
+                  <select id="type-month" aria-label="Type chart month"></select>
+                  <select id="type-category" aria-label="Type chart category"></select>
+                </div>
+              </div>
               <div class="chart-box"><canvas id="type-chart"></canvas></div>
             </div>
           </div>
           <div class="card" style="margin-bottom:20px">
-            <h3>Yearly total</h3>
+            <div class="chart-head">
+              <h3>Yearly total</h3>
+              <select id="year-chart-year" aria-label="Yearly total year"></select>
+            </div>
             <div class="chart-box"><canvas id="month-chart"></canvas></div>
           </div>
           <div class="card">
-            <h3>Activity</h3>
+            <div class="chart-head">
+              <h3>Activity</h3>
+              <div class="row-actions">
+                <button type="button" class="btn ghost sm" id="act-clear">Clear</button>
+                <button type="button" class="btn secondary sm" id="act-viewall">View all</button>
+              </div>
+            </div>
+            <div class="filter-bar" id="activity-filters">
+              <select id="act-month" aria-label="Activity month"></select>
+              <select id="act-type" aria-label="Activity type"></select>
+              <select id="act-category" aria-label="Activity category"></select>
+              <select id="act-account" aria-label="Activity account"></select>
+              <input id="act-notes" type="search" placeholder="Search notes" autocomplete="off" />
+            </div>
+            <p class="tiny" id="activity-meta"></p>
             <div style="overflow:auto">
               <table>
                 <thead>
@@ -116,6 +144,7 @@
                   </tr>
                 </thead>
                 <tbody id="expense-rows"></tbody>
+                <tfoot id="expense-foot"></tfoot>
               </table>
             </div>
           </div>
@@ -153,6 +182,10 @@
             <button data-sleeve="foreign" type="button">Foreign stocks</button>
           </div>
           <div class="card">
+            <div class="chart-head">
+              <h3>Holdings</h3>
+              <select id="pf-sort" aria-label="Sort holdings"></select>
+            </div>
             <div style="overflow:auto">
               <table>
                 <thead id="pf-head"></thead>
@@ -199,6 +232,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/app.js?v=5"></script>
 </body>
 </html>

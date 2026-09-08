@@ -11,14 +11,19 @@ import {
   computeStepup,
   enrichHolding,
   enrichPortfolio,
+  filterExpenses,
   formatInr,
   formatInrGroup,
+  groupSpend,
   marketValueInr,
   parseInrInput,
   runCalculator,
   sleeveTotals,
+  sortHoldings,
   spendStats,
+  sumAmounts,
   validateCalcInputs,
+  yearlyByMonth,
 } from "./finance.js";
 
 const FX = { USDINR: 94.47, EURINR: 109.85 };
@@ -244,5 +249,46 @@ describe("spend stats", () => {
     assert.equal(ours.monthTotal, 100);
     assert.equal(ours.byType["Our Expense"], 100);
     assert.equal(ours.byType["My Expense"], undefined);
+  });
+});
+
+describe("expense filters and grouping", () => {
+  const rows = [
+    { date: "2026-09-08", amount: 200, type: "Home Expense", category: "Medicine", account: "UPI", notes: "Train ticket" },
+    { date: "2026-09-07", amount: 50, type: "My Expense", category: "Food", account: "Cash", notes: "Lunch" },
+    { date: "2026-08-01", amount: 80, type: "Home Expense", category: "Medicine", account: "UPI", notes: "pharmacy" },
+  ];
+  it("greps notes case-insensitively and can limit by month/type", () => {
+    const found = filterExpenses(rows, { notes: "train ticket" });
+    assert.equal(found.length, 1);
+    assert.equal(found[0].amount, 200);
+    const month = filterExpenses(rows, { month: "2026-09", type: "Home Expense" });
+    assert.equal(sumAmounts(month), 200);
+  });
+  it("builds category and type pies from independent filters", () => {
+    const cat = groupSpend(filterExpenses(rows, { month: "2026-09", type: "Home Expense" }), "category");
+    assert.equal(cat.Medicine, 200);
+    assert.equal(cat.Food, undefined);
+    const types = groupSpend(filterExpenses(rows, { month: "2026-09", category: "Food" }), "type");
+    assert.equal(types["My Expense"], 50);
+    assert.equal(types["Home Expense"], undefined);
+  });
+  it("yearly bars follow the selected year", () => {
+    const y2026 = yearlyByMonth(rows, "2026");
+    assert.equal(y2026[7].total, 80);
+    assert.equal(y2026[8].total, 250);
+  });
+});
+
+describe("holding sort", () => {
+  const rows = [
+    { name: "A", market: 100, gain: 10, gainPct: 0.1, cost: 90 },
+    { name: "B", market: 50, gain: 40, gainPct: 0.8, cost: 10 },
+  ];
+  it("sorts profit high to low and current low to high", () => {
+    assert.equal(sortHoldings(rows, "gain-desc")[0].name, "B");
+    assert.equal(sortHoldings(rows, "market-asc")[0].name, "B");
+    assert.equal(sortHoldings(rows, "gainPct-desc")[0].name, "B");
+    assert.equal(sortHoldings(rows, "cost-desc")[0].name, "A");
   });
 });
