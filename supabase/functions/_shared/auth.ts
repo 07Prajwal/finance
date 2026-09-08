@@ -65,7 +65,7 @@ export async function verifyJwt(token, secret) {
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-finance-token",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-finance-token, x-finance-password",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

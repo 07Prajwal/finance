@@ -58,6 +58,41 @@ After that, sign-in goes through the `login` function. Writes only succeed with 
 
 Session lasts 7 days in `localStorage`. Sign out from the nav.
 
+### 4. iPhone Shortcut (log an expense after Google Pay)
+
+The site already has Add expense. A Shortcut is for when you close GPay and want the same questions without opening the page.
+
+1. Deploy the `expense` function once (`npx supabase functions deploy expense`).
+2. On iPhone: Shortcuts → + → name it **Log expense**.
+3. Add actions in this order:
+   - **Ask for Input** → Number → prompt `Amount`
+   - **Choose from Menu** → Our Expense, Home Expense, My Expense (prompt `Type`)
+   - **Choose from Menu** → Food, Quick Delivery, Travel, Shopping, Medicine, Other (prompt `Category`)
+   - **Choose from Menu** → UPI, Cash, Card (prompt `Account`)
+   - **Ask for Input** → Text → prompt `Notes` (Allow Empty)
+   - **Get Contents of URL**
+     - URL: `https://capyboshlcdhpzxurajn.supabase.co/functions/v1/expense`
+     - Method: POST
+     - Headers: `Content-Type` = `application/json`, `Authorization` = `Bearer` + your **anon public** key from `js/config.js`, `apikey` = the same key
+     - Request Body: JSON
+
+```json
+{
+  "password": "YOUR_OWNER_PASSWORD",
+  "amount": Amount (the Ask for Input result),
+  "type": Type (the first menu result),
+  "category": Category,
+  "account": Account,
+  "notes": Notes
+}
+```
+
+In Shortcuts, each JSON value is a Magic Variable, not typed text. Keep the owner password only on your phone.
+
+4. Automation: Shortcuts → Automation → New → **App** → Google Pay → **Is Closed** → Run **Log expense**. Turn **Ask Before Running** on until you trust it, then off if you want it every time GPay closes.
+
+A 401 means the owner password in the Shortcut is wrong. A saved row shows on the website after refresh.
+
 ## What changed from the first draft
 
 - Overview splits **Investments** and **Spending**.

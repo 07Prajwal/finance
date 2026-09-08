@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.api]
 verify_jwt = false
+
+[functions.expense]
+verify_jwt = false
