@@ -16,7 +16,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { background: var(--white); color: var(--ink); }
+html, body { background: var(--white); color: var(--ink); overflow-x: hidden; }
 body {
   font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   font-size: 17px;
@@ -42,6 +42,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .nav-inner {
   width: min(1120px, calc(100% - 48px));
+  min-width: 0;
   display: flex; align-items: center; justify-content: space-between; gap: 20px;
 }
 .wordmark {
@@ -313,8 +314,28 @@ body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !
 @media (max-width: 900px) {
   .metrics, .metrics.metrics-2, #pf-metrics, .grid-2, .grid-3, .fields, .calc-layout { grid-template-columns: 1fr; }
   .hero { padding-top: 48px; }
-  .nav-links { gap: 10px; }
-  .nav-inner { width: min(1120px, calc(100% - 24px)); }
+  .nav { height: auto; }
+  .nav-inner {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 12px 6px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .wordmark { flex: 0 0 auto; }
+  .nav-meta { margin-left: auto; flex: 0 0 auto; }
+  .nav-links {
+    flex: 1 1 100%;
+    order: 3;
+    gap: 16px;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 2px 0 6px;
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .nav-links a, .nav-cta { flex-shrink: 0; white-space: nowrap; }
   .wrap { width: min(1120px, calc(100% - 32px)); }
   .nav-links a:not(.nav-cta) { font-size: 12px; }
   .role-chip { display: none; }
