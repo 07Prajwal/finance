@@ -73,25 +73,83 @@ async function fxOf(client) {
   return data?.value || { USDINR: 0, EURINR: 0 };
 }
 
-async function fetchYahooQuotes(symbols) {
-  const unique = [...new Set((symbols || []).filter(Boolean))];
-  const out = {};
-  const size = 20;
-  for (let i = 0; i < unique.length; i += size) {
-    const chunk = unique.slice(i, i + size);
-    const url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=" + encodeURIComponent(chunk.join(","));
+const YAHOO_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+function quoteFromMeta(symbol, meta) {
+  const price = Number(meta?.regularMarketPrice);
+  if (!(price > 0)) return null;
+  const prev = Number(meta.chartPreviousClose ?? meta.previousClose ?? meta.regularMarketPreviousClose);
+  const change = Number.isFinite(prev) && prev > 0 ? price - prev : 0;
+  const changePct = prev > 0 ? change / prev : 0;
+  return {
+    price,
+    change,
+    changePct,
+    name: meta.shortName || meta.longName || symbol,
+  };
+}
+
+async function yahooChart(symbol) {
+  const hosts = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+  for (const host of hosts) {
+    const url = `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; FinanceTracker/1.0)" },
+      headers: { "User-Agent": YAHOO_UA, Accept: "application/json" },
     });
     if (!res.ok) continue;
     const data = await res.json();
-    for (const q of data.quoteResponse?.result || []) {
-      out[q.symbol] = {
-        price: q.regularMarketPrice,
-        change: q.regularMarketChange,
-        changePct: (q.regularMarketChangePercent || 0) / 100,
-        name: q.shortName || q.longName,
-      };
+    const q = quoteFromMeta(symbol, data.chart?.result?.[0]?.meta);
+    if (q) return q;
+  }
+  return null;
+}
+
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return out;
+}
+
+async function fetchFrankfurterFx() {
+  const fx = {};
+  for (const [pair, from] of [["USDINR=X", "USD"], ["EURINR=X", "EUR"]]) {
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=INR`);
+    if (!res.ok) continue;
+    const data = await res.json();
+    const price = Number(data?.rates?.INR);
+    if (price > 0) fx[pair] = { price, change: 0, changePct: 0, name: `${from}/INR` };
+  }
+  return fx;
+}
+
+async function fetchYahooQuotes(symbols) {
+  const unique = [...new Set((symbols || []).map((s) => String(s).trim()).filter(Boolean))];
+  const out = {};
+  const rows = await mapPool(unique, 8, async (sym) => {
+    try {
+      return [sym, await yahooChart(sym)];
+    } catch {
+      return [sym, null];
+    }
+  });
+  for (const [sym, q] of rows) {
+    if (q) out[sym] = q;
+  }
+  if (!out["USDINR=X"] || !out["EURINR=X"]) {
+    try {
+      const fx = await fetchFrankfurterFx();
+      for (const [k, v] of Object.entries(fx)) {
+        if (!out[k]) out[k] = v;
+      }
+    } catch {
+      /* FX backup is optional */
     }
   }
   if (!Object.keys(out).length) throw new Error("Live prices are unavailable right now");

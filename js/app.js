@@ -909,11 +909,11 @@ async function refreshQuotes() {
       await api("updateQuotes", { holdings, fx: portfolio.fx });
     }
     const n = Object.keys(quotes).length;
-    status.textContent = `Live prices updated for ${n} symbols. USD/INR ${portfolio.fx.USDINR.toFixed(2)}, EUR/INR ${portfolio.fx.EURINR.toFixed(2)}.`;
+    status.textContent = `Live prices updated for ${n} symbols. USD/INR ${Number(portfolio.fx.USDINR || 0).toFixed(2)}, EUR/INR ${Number(portfolio.fx.EURINR || 0).toFixed(2)}.`;
     status.className = "status ok";
     renderPortfolio();
-  } catch {
-    status.textContent = "Live fetch was blocked. Last saved prices are still shown.";
+  } catch (err) {
+    status.textContent = (err && err.message) || "Live prices could not be updated. Last saved prices are still shown.";
     status.className = "status bad";
   }
 }
