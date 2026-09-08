@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyBuy,
   applySell,
+  cashflowsForHoldings,
   chartSeries,
   clampCalc,
   computeEmi,
@@ -317,5 +318,16 @@ describe("XIRR", () => {
       { date: "2026-01-01", amount: -100 },
       { date: "2026-01-01", amount: 120 },
     ]).ok, false);
+  });
+  it("portfolio XIRR ignores holdings that have no dated trades", () => {
+    const flows = cashflowsForHoldings(
+      [
+        { id: "in", market: 100000 },
+        { id: "fx", market: 120 },
+      ],
+      [{ holding_id: "fx", side: "buy", date: "2026-01-01", cost_inr: 100 }],
+      new Date("2026-07-01")
+    );
+    assert.deepEqual(flows.map((f) => f.amount).sort((a, b) => a - b), [-100, 120]);
   });
 });

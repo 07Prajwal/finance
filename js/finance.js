@@ -376,8 +376,12 @@ export function xirr(cashflows, guess = 0.1) {
 
 export function cashflowsForHoldings(holdings, trades, asOf = new Date()) {
   const ids = new Set((holdings || []).map((h) => h.id).filter(Boolean));
-  const flows = tradeCashflows((trades || []).filter((t) => ids.has(t.holding_id)));
-  const market = (holdings || []).reduce((s, h) => s + (Number(h.market) || 0), 0);
+  const relevant = (trades || []).filter((t) => ids.has(t.holding_id));
+  const flows = tradeCashflows(relevant);
+  const tradedIds = new Set(relevant.map((t) => t.holding_id));
+  const market = (holdings || []).reduce((s, h) => (
+    tradedIds.has(h.id) ? s + (Number(h.market) || 0) : s
+  ), 0);
   if (market > 0) flows.push({ date: isoDate(asOf), amount: market });
   return flows;
 }
