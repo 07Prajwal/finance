@@ -45,6 +45,19 @@ function nowTime() {
 function nid(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
+function roleFromToken(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    if (!part) return "";
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    const payload = JSON.parse(json);
+    const role = payload.app_role || payload.role;
+    return role === "owner" || role === "viewer" ? role : "";
+  } catch {
+    return "";
+  }
+}
+
 function isOwner() { return session?.role === "owner"; }
 
 function loadSession() {
@@ -52,7 +65,12 @@ function loadSession() {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    if (!s?.exp || s.exp < Date.now()) {
+    if (!s?.token || !s?.exp || s.exp < Date.now()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    s.role = roleFromToken(s.token) || s.role;
+    if (s.role !== "owner" && s.role !== "viewer") {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
@@ -157,8 +175,9 @@ async function remoteApi(op, payload = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${session.token}`,
+      Authorization: `Bearer ${config.supabaseAnonKey}`,
       apikey: config.supabaseAnonKey,
+      "X-Finance-Token": session.token,
     },
     body: JSON.stringify({ op, ...payload }),
   });
@@ -195,7 +214,9 @@ async function loginRemote(password) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Could not sign in");
-  return { token: data.token, role: data.role, exp: Date.now() + SESSION_MS };
+  const role = roleFromToken(data.token) || data.role;
+  if (role !== "owner" && role !== "viewer") throw new Error("Could not sign in");
+  return { token: data.token, role, exp: Date.now() + SESSION_MS };
 }
 
 function loginLocal(password) {
@@ -213,12 +234,26 @@ function setRoleChrome() {
   $("role-chip").textContent = isOwner() ? "Owner" : "Viewer";
 }
 
+function currentPageId() {
+  let id = (location.hash || "#home").replace(/^#/, "") || "home";
+  if (id.startsWith("/")) id = id.slice(1);
+  if (!$(id) || !$(id).classList.contains("page")) id = "home";
+  return id;
+}
+
+function activatePage(id) {
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === id));
+  document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === id));
+}
+
 function unlockApp() {
   $("login-gate").classList.add("hidden");
   $("setup-gate").classList.add("hidden");
   $("app-shell").classList.remove("locked");
   $("local-banner").classList.toggle("hidden", isRemoteConfigured());
   setRoleChrome();
+  if (!location.hash || location.hash === "#") location.hash = "home";
+  activatePage(currentPageId());
 }
 
 function lockApp() {
@@ -236,7 +271,6 @@ function showLoginError(msg) {
 }
 
 async function afterLogin() {
-  saveSession(session);
   const err = $("login-error");
   if (err) {
     err.textContent = "Loading…";
@@ -244,21 +278,16 @@ async function afterLogin() {
     err.className = "status";
   }
   await api("listAll");
+  saveSession(session);
   unlockApp();
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  const pageId = (location.hash || "").slice(1);
-  if (!pageId || !$(pageId) || !$(pageId).classList.contains("page")) {
-    history.replaceState(null, "", "#home");
-  }
   showPage();
 }
 
 function showPage() {
+  const id = currentPageId();
+  activatePage(id);
   if (!session) return;
-  let id = (location.hash || "#home").slice(1) || "home";
-  if (!$(id) || !$(id).classList.contains("page")) id = "home";
-  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === id));
-  document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === id));
   try {
     if (id === "home") renderHome();
     if (id === "expenses") renderExpenses();
@@ -283,18 +312,21 @@ function destroyChart(id) {
 function doughnut(id, labels, values) {
   destroyChart(id);
   const ctx = $(id);
-  if (!ctx) return;
+  if (!ctx || typeof Chart === "undefined") return;
+  try {
   charts[id] = new Chart(ctx, {
     type: "doughnut",
     data: { labels, datasets: [{ data: values, backgroundColor: PALETTE.slice(0, labels.length), borderWidth: 0 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } } }, cutout: "62%" },
   });
+  } catch { /* canvas may still be hidden on first paint */ }
 }
 
 function bar(id, labels, values, color = "#0071E3") {
   destroyChart(id);
   const ctx = $(id);
-  if (!ctx) return;
+  if (!ctx || typeof Chart === "undefined") return;
+  try {
   charts[id] = new Chart(ctx, {
     type: "bar",
     data: { labels, datasets: [{ data: values, backgroundColor: color, borderRadius: 4, barPercentage: 0.6 }] },
@@ -307,12 +339,14 @@ function bar(id, labels, values, color = "#0071E3") {
       },
     },
   });
+  } catch { /* canvas may still be hidden on first paint */ }
 }
 
 function lineStack(id, labels, invested, returns, investedLabel, returnsLabel) {
   destroyChart(id);
   const ctx = $(id);
-  if (!ctx) return;
+  if (!ctx || typeof Chart === "undefined") return;
+  try {
   charts[id] = new Chart(ctx, {
     type: "bar",
     data: {
@@ -331,6 +365,7 @@ function lineStack(id, labels, invested, returns, investedLabel, returnsLabel) {
       },
     },
   });
+  } catch { /* canvas may still be hidden on first paint */ }
 }
 
 function metricHTML(items) {

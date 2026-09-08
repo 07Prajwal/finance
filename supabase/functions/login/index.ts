@@ -16,7 +16,11 @@ Deno.serve(async (req) => {
     else if (timingSafeEqual(hash, viewer)) role = "viewer";
     if (!role) return json({ error: "Wrong password" }, 401);
     const now = Math.floor(Date.now() / 1000);
-    const token = await signJwt({ role, iat: now, exp: now + 7 * 24 * 3600 }, secret);
+    const token = await signJwt({
+      app_role: role,
+      iat: now - 60,
+      exp: now + 7 * 24 * 3600,
+    }, secret);
     return json({ token, role });
   } catch {
     return json({ error: "Could not sign in" }, 400);

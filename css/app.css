@@ -70,7 +70,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .page { display: none; }
-.page.active { display: block; }
+.page.active, .page:target { display: block; }
 .app-shell.locked { display: none; }
 
 .hero {
@@ -234,6 +234,9 @@ body.is-owner .owner-only.block { display: flex !important; }
 body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !important; }
 
 .login-gate, .setup-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   padding: 24px;

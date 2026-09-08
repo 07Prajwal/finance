@@ -55,8 +55,9 @@ export async function verifyJwt(token, secret) {
   try {
     const payload = JSON.parse(new TextDecoder().decode(bytesFromB64url(p)));
     if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
-    if (payload.role !== "owner" && payload.role !== "viewer") return null;
-    return { role: payload.role };
+    const role = payload.app_role || payload.role;
+    if (role !== "owner" && role !== "viewer") return null;
+    return { role };
   } catch {
     return null;
   }
@@ -64,7 +65,7 @@ export async function verifyJwt(token, secret) {
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-finance-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

@@ -5,10 +5,24 @@ import { corsHeaders, json, verifyJwt } from "../_shared/auth.ts";
 function service() {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  return createClient(url, key);
+  if (!url || !key) throw new Error("Server is not configured");
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: {
+      headers: { Authorization: `Bearer ${key}`, apikey: key },
+      fetch: (input, init = {}) => {
+        const headers = new Headers(init.headers || {});
+        headers.set("Authorization", `Bearer ${key}`);
+        headers.set("apikey", key);
+        return fetch(input, { ...init, headers });
+      },
+    },
+  });
 }
 
-function bearer(req) {
+function financeToken(req) {
+  const custom = (req.headers.get("x-finance-token") || "").trim();
+  if (custom) return custom;
   return (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
 }
 
@@ -88,7 +102,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const claims = await verifyJwt(bearer(req), Deno.env.get("JWT_SECRET") || "");
+  const claims = await verifyJwt(financeToken(req), Deno.env.get("JWT_SECRET") || "");
   if (!claims) return json({ error: "Please sign in again" }, 401);
 
   let body;
