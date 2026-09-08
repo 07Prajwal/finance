@@ -442,17 +442,29 @@ function doughnutOrEmpty(id, grouped) {
   doughnut(id, labels.length ? labels : ["No spend yet"], labels.length ? labels.map((k) => grouped[k]) : [1]);
 }
 
-function renderExpenseCharts() {
+function renderCatChart() {
   doughnutOrEmpty("cat-chart", Finance.groupSpend(
     Finance.filterExpenses(expenses, { month: catChartMonth, type: catChartType }),
     "category"
   ));
+}
+
+function renderTypeChart() {
   doughnutOrEmpty("type-chart", Finance.groupSpend(
     Finance.filterExpenses(expenses, { month: typeChartMonth, category: typeChartCategory }),
     "type"
   ));
+}
+
+function renderYearChart() {
   const byMonth = Finance.yearlyByMonth(expenses, yearChartYear);
   bar("month-chart", byMonth.map((m) => m.label), byMonth.map((m) => m.total));
+}
+
+function renderExpenseCharts() {
+  renderCatChart();
+  renderTypeChart();
+  renderYearChart();
 }
 
 function renderExpenseActivity() {
@@ -1041,7 +1053,9 @@ $("expenses").addEventListener("change", (e) => {
   else if (id === "act-account") activityFilter.account = e.target.value;
   else return;
   if (id.startsWith("act-")) renderExpenseActivity();
-  else renderExpenseCharts();
+  else if (id === "cat-month" || id === "cat-type") renderCatChart();
+  else if (id === "type-month" || id === "type-category") renderTypeChart();
+  else if (id === "year-chart-year") renderYearChart();
 });
 $("act-notes").addEventListener("input", (e) => {
   activityFilter.notes = e.target.value;
@@ -1063,6 +1077,11 @@ $("act-viewall").addEventListener("click", () => {
 });
 $("pf-sort").addEventListener("change", (e) => {
   pfSort = e.target.value || "market-desc";
+  renderPortfolio();
+});
+$("pf-sort-clear").addEventListener("click", () => {
+  pfSort = "market-desc";
+  if ($("pf-sort")) $("pf-sort").value = pfSort;
   renderPortfolio();
 });
 
