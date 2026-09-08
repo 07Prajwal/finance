@@ -17,6 +17,7 @@ import {
   formatInr,
   formatInrGroup,
   groupSpend,
+  isXirrEligible,
   marketValueInr,
   parseInrInput,
   realisedFromTrades,
@@ -341,21 +342,24 @@ describe("XIRR", () => {
   it("portfolio XIRR ignores holdings that have no dated trades", () => {
     const flows = cashflowsForHoldings(
       [
-        { id: "in", market: 100000 },
-        { id: "fx", market: 120 },
+        { id: "in", market: 100000, shares: 1 },
+        { id: "fx", market: 120, shares: 1 },
       ],
-      [{ holding_id: "fx", side: "buy", date: "2026-01-01", cost_inr: 100 }],
+      [{ holding_id: "fx", side: "buy", date: "2025-07-01", cost_inr: 100 }],
       new Date("2026-07-01")
     );
     assert.deepEqual(flows.map((f) => f.amount).sort((a, b) => a - b), [-100, 120]);
   });
-  it("total XIRR includes sold-out trades with no current holding", () => {
+  it("total XIRR includes sold-out holdings held at least a year", () => {
     const flows = portfolioCashflows(
-      [{ id: "keep", market: 200 }],
       [
-        { holding_id: "keep", side: "buy", date: "2026-01-01", cost_inr: 100 },
-        { holding_id: null, side: "buy", date: "2026-02-01", cost_inr: 50 },
-        { holding_id: null, side: "sell", date: "2026-03-01", proceeds_inr: 60 },
+        { id: "keep", market: 200, shares: 1 },
+        { id: "gone", market: 0, shares: 0 },
+      ],
+      [
+        { holding_id: "keep", side: "buy", date: "2024-01-01", cost_inr: 100 },
+        { holding_id: "gone", side: "buy", date: "2024-01-01", cost_inr: 50 },
+        { holding_id: "gone", side: "sell", date: "2025-06-01", proceeds_inr: 60 },
       ],
       new Date("2026-07-01")
     );
@@ -363,6 +367,21 @@ describe("XIRR", () => {
       flows.map((f) => f.amount).sort((a, b) => a - b),
       [-100, -50, 60, 200]
     );
+  });
+  it("omits lots held under a year from XIRR cash flows", () => {
+    const asOf = new Date("2026-09-08");
+    const holdings = [
+      { id: "old", market: 200, shares: 1 },
+      { id: "new", market: 5000, shares: 1 },
+    ];
+    const trades = [
+      { holding_id: "old", side: "buy", date: "2024-08-01", cost_inr: 100 },
+      { holding_id: "new", side: "buy", date: "2026-03-01", cost_inr: 4000 },
+    ];
+    const flows = cashflowsForHoldings(holdings, trades, asOf);
+    assert.deepEqual(flows.map((f) => f.amount).sort((a, b) => a - b), [-100, 200]);
+    assert.equal(isXirrEligible(holdings[1], trades, asOf), false);
+    assert.equal(isXirrEligible(holdings[0], trades, asOf), true);
   });
   it("average-cost realised matches proceeds minus cost removed", () => {
     const res = replayAverageCost([
@@ -390,5 +409,6 @@ describe("XIRR", () => {
     close(rows[0].realised, 7387.45, 0.02);
     assert.equal(rows[0].firstBuy, "2024-10-24");
     assert.equal(rows[0].lastSell, "2024-10-28");
+    assert.equal(rows[0].xirr, null);
   });
 });

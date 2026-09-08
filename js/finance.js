@@ -45,7 +45,7 @@ export function enrichPortfolio(portfolio) {
     const replay = replayAverageCost((trades || []).filter((t) => h.id && t.holding_id === h.id));
     return {
       ...h,
-      xirr: xirrRate(cashflowsForHoldings([h], trades, asOf)),
+      xirr: isXirrEligible(h, trades, asOf) ? xirrRate(cashflowsForHoldings([h], trades, asOf)) : null,
       realised: replay.realised,
       closed: (Number(h.shares) || 0) <= 1e-9,
     };
@@ -395,7 +395,9 @@ export function soldPositionSummaries(holdings, trades) {
       spent,
       got,
       realised: replay.realised,
-      xirr: xirrRate(tradeCashflows(rows)),
+      xirr: holdingHoldDays({ ...h, shares: 0 }, rows) >= XIRR_MIN_HOLD_DAYS
+        ? xirrRate(tradeCashflows(rows))
+        : null,
       gain: replay.realised,
       cost: spent,
       market: got,
@@ -474,12 +476,30 @@ export function xirr(cashflows, guess = 0.1) {
   return Number.isFinite(mid) ? { ok: true, rate: mid } : { ok: false };
 }
 
+export const XIRR_MIN_HOLD_DAYS = 365;
+
+export function holdingHoldDays(holding, trades, asOf = new Date()) {
+  const rows = (trades || []).filter((t) => holding?.id && t.holding_id === holding.id);
+  const times = rows.map((t) => dateUTC(isoDate(t.date))).filter((t) => Number.isFinite(t));
+  if (!times.length) return 0;
+  const first = Math.min(...times);
+  const closed = (Number(holding.shares) || 0) <= 1e-9;
+  const end = closed ? Math.max(...times) : dateUTC(isoDate(asOf));
+  if (!Number.isFinite(end) || end < first) return 0;
+  return Math.round((end - first) / 86400000);
+}
+
+export function isXirrEligible(holding, trades, asOf = new Date()) {
+  return holdingHoldDays(holding, trades, asOf) >= XIRR_MIN_HOLD_DAYS;
+}
+
 export function cashflowsForHoldings(holdings, trades, asOf = new Date()) {
-  const ids = new Set((holdings || []).map((h) => h.id).filter(Boolean));
+  const eligible = (holdings || []).filter((h) => isXirrEligible(h, trades, asOf));
+  const ids = new Set(eligible.map((h) => h.id).filter(Boolean));
   const relevant = (trades || []).filter((t) => ids.has(t.holding_id));
   const flows = tradeCashflows(relevant);
   const tradedIds = new Set(relevant.map((t) => t.holding_id));
-  const market = (holdings || []).reduce((s, h) => (
+  const market = eligible.reduce((s, h) => (
     tradedIds.has(h.id) ? s + (Number(h.market) || 0) : s
   ), 0);
   if (market > 0) flows.push({ date: isoDate(asOf), amount: market });
@@ -487,9 +507,12 @@ export function cashflowsForHoldings(holdings, trades, asOf = new Date()) {
 }
 
 export function portfolioCashflows(holdings, trades, asOf = new Date()) {
-  const flows = tradeCashflows(trades || []);
-  const tradedIds = new Set((trades || []).map((t) => t.holding_id).filter(Boolean));
-  const market = (holdings || []).reduce((s, h) => (
+  const eligible = (holdings || []).filter((h) => isXirrEligible(h, trades, asOf));
+  const ids = new Set(eligible.map((h) => h.id).filter(Boolean));
+  const relevant = (trades || []).filter((t) => ids.has(t.holding_id));
+  const flows = tradeCashflows(relevant);
+  const tradedIds = new Set(relevant.map((t) => t.holding_id));
+  const market = eligible.reduce((s, h) => (
     tradedIds.has(h.id) ? s + (Number(h.market) || 0) : s
   ), 0);
   if (market > 0) flows.push({ date: isoDate(asOf), amount: market });

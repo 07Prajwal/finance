@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finance</title>
-  <link rel="stylesheet" href="css/app.css?v=11" />
+  <link rel="stylesheet" href="css/app.css?v=12" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -197,7 +197,7 @@
                 <tfoot id="pf-foot"></tfoot>
               </table>
             </div>
-            <p class="tiny" id="pf-table-note" style="margin-top:12px">XIRR is the true annualized yield from dated buys and sells, with today's value as the last cash flow.</p>
+            <p class="tiny" id="pf-table-note" style="margin-top:12px">XIRR skips lots held under a year, so a short spike is not annualized. Today's value is the last cash flow.</p>
           </div>
         </div>
       </section>
@@ -237,6 +237,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=11"></script>
+  <script type="module" src="js/app.js?v=12"></script>
 </body>
 </html>

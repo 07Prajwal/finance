@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=11";
+import * as Finance from "./finance.js?v=12";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -580,7 +580,7 @@ function renderPortfolio() {
     { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.gainPct), tone: cls(p.total.gain) },
     { label: "Unrealised P/L %", value: pct(p.total.gainPct), tone: cls(p.total.gain) },
     { label: "Realised P/L", value: rupee(p.realised, 2), tone: cls(p.realised) },
-    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs dated buys" : "True annualized yield" },
+    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs 1 year of history" : "True annualized yield" },
   ]);
   doughnut("alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks"], [p.i.market, p.m.market, p.f.market]);
   bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign"], [p.i.gain, p.m.gain, p.f.gain], "#1D1D1F");
@@ -610,7 +610,7 @@ function renderPortfolio() {
   if (note) {
     note.textContent = pfShowSold
       ? "Fully sold names only. Tap a row for every buy and sell. Realised P/L above also includes booked profit on stocks you still hold."
-      : "XIRR is the true annualized yield from dated buys and sells, with today's value as the last cash flow.";
+      : "XIRR skips lots held under a year, so a short spike is not annualized. Today's value is the last cash flow.";
   }
   if (pfShowSold) {
     $("pf-head").innerHTML = `<tr>
