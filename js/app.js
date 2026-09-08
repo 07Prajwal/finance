@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js";
+import * as Finance from "./finance.js?v=11";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -27,6 +27,7 @@ let typeChartCategory = "";
 let yearChartYear = String(new Date().getFullYear());
 let pfSort = Finance.DEFAULT_HOLDING_SORT;
 let sleeve = "indian";
+let pfShowSold = false;
 let calcKind = "sip";
 let calcState = { monthly: 10000, rate: 12, years: 10, step: 10, lump: 100000, loan: 2500000, loanRate: 8.5, tenure: 20 };
 let calcTimer = 0;
@@ -418,6 +419,7 @@ function renderHome() {
     { label: "Current value", value: rupee(p.total.market), delta: `Day ${rupee(p.total.day)}`, tone: cls(p.total.day) },
     { label: "Invested", value: rupee(p.total.cost) },
     { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.cost ? p.total.gain / p.total.cost : 0), tone: cls(p.total.gain) },
+    { label: "Realised P/L", value: rupee(p.realised, 2), tone: cls(p.realised) },
     { label: "Day change", value: rupee(p.total.day), tone: cls(p.total.day) },
   ]);
   $("home-spend-metrics").innerHTML = metricHTML([
@@ -555,6 +557,21 @@ function renderExpenses() {
   renderExpenseActivity();
 }
 
+function fmtDate(iso) {
+  const s = String(iso || "").slice(0, 10);
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d} ${months[m - 1]} ${y}`;
+}
+
+function fmtDateRange(dates) {
+  const uniq = [...new Set((dates || []).filter(Boolean))];
+  if (!uniq.length) return "—";
+  if (uniq.length === 1) return fmtDate(uniq[0]);
+  return `${fmtDate(uniq[0])} – ${fmtDate(uniq[uniq.length - 1])}`;
+}
+
 function renderPortfolio() {
   const p = Finance.enrichPortfolio(portfolio);
   $("pf-metrics").innerHTML = metricHTML([
@@ -562,15 +579,16 @@ function renderPortfolio() {
     { label: "Invested", value: rupee(p.total.cost) },
     { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.gainPct), tone: cls(p.total.gain) },
     { label: "Unrealised P/L %", value: pct(p.total.gainPct), tone: cls(p.total.gain) },
-    { label: "Realised P/L", value: rupee(p.realised), tone: cls(p.realised) },
-    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs dated buys" : "Money-weighted" },
+    { label: "Realised P/L", value: rupee(p.realised, 2), tone: cls(p.realised) },
+    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs dated buys" : "True annualized yield" },
   ]);
   doughnut("alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks"], [p.i.market, p.m.market, p.f.market]);
   bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign"], [p.i.gain, p.m.gain, p.f.gain], "#1D1D1F");
 
   const map = { indian: p.indian, mf: p.mf, foreign: p.foreign };
   const totals = { indian: p.i, mf: p.m, foreign: p.f };
-  const rows = Finance.sortHoldings(map[sleeve].filter((r) => r.shares > 1e-9), pfSort);
+  const openRows = Finance.sortHoldings((map[sleeve] || []).filter((r) => (Number(r.shares) || 0) > 1e-9), pfSort);
+  const soldRows = Finance.sortHoldings(Finance.soldPositionSummaries(map[sleeve] || [], p.trades), pfSort);
   const t = totals[sleeve];
   const fxCol = sleeve === "foreign";
   const unit = sleeve === "mf" ? "Units" : "Shares";
@@ -580,13 +598,61 @@ function renderPortfolio() {
     sortEl.dataset.ready = "name-v1";
   }
   if (sortEl) sortEl.value = pfSort;
+  const title = $("pf-table-title");
+  if (title) title.textContent = pfShowSold ? "Sold stocks" : "Holdings";
+  const soldBtn = $("pf-sold-toggle");
+  if (soldBtn) {
+    soldBtn.classList.toggle("on", pfShowSold);
+    soldBtn.setAttribute("aria-pressed", pfShowSold ? "true" : "false");
+    soldBtn.textContent = pfShowSold ? "Back to holdings" : "Sold stocks";
+  }
+  const note = $("pf-table-note");
+  if (note) {
+    note.textContent = pfShowSold
+      ? "Fully sold names only. Tap a row for every buy and sell. Realised P/L above also includes booked profit on stocks you still hold."
+      : "XIRR is the true annualized yield from dated buys and sells, with today's value as the last cash flow.";
+  }
+  if (pfShowSold) {
+    $("pf-head").innerHTML = `<tr>
+      <th>Stock</th><th>Platform</th><th>Bought</th><th>Sold</th>
+      <th class="num">${unit}</th><th class="num">Buy avg</th><th class="num">Sell avg</th>
+      <th class="num">Spent</th><th class="num">Got</th><th class="num">P/L</th><th class="num">XIRR</th>
+    </tr>`;
+    $("pf-rows").innerHTML = soldRows.length ? soldRows.map((r) => `
+      <tr class="sold-row ${r.realised < 0 ? "loss" : ""}" data-sold-id="${esc(r.id)}" tabindex="0">
+        <td><strong>${esc(r.name)}</strong><div class="tiny">${esc(r.symbol)}</div></td>
+        <td>${esc(r.platform)}</td>
+        <td>${esc(fmtDateRange(r.buyDates))}</td>
+        <td>${esc(fmtDateRange(r.sellDates))}</td>
+        <td class="num">${NUM.format(r.qty)}</td>
+        <td class="num">${NUM.format(r.buyAvg)}</td>
+        <td class="num">${NUM.format(r.sellAvg)}</td>
+        <td class="num">${rupee(r.spent, 2)}</td>
+        <td class="num">${rupee(r.got, 2)}</td>
+        <td class="num ${r.realised >= 0 ? "gain" : "loss"}">${rupee(r.realised, 2)}</td>
+        <td class="num ${r.xirr == null ? "" : r.xirr >= 0 ? "gain" : "loss"}">${r.xirr == null ? "—" : pct(r.xirr)}</td>
+      </tr>`).join("") : `<tr><td colspan="11" class="tiny">No sold stocks in this list.</td></tr>`;
+    const soldQty = soldRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const soldSpent = soldRows.reduce((s, r) => s + (Number(r.spent) || 0), 0);
+    const soldGot = soldRows.reduce((s, r) => s + (Number(r.got) || 0), 0);
+    const soldPl = soldRows.reduce((s, r) => s + (Number(r.realised) || 0), 0);
+    $("pf-foot").innerHTML = soldRows.length ? `<tr>
+      <td>Total</td><td></td><td></td><td></td>
+      <td class="num">${NUM.format(soldQty)}</td><td></td><td></td>
+      <td class="num">${rupee(soldSpent, 2)}</td>
+      <td class="num">${rupee(soldGot, 2)}</td>
+      <td class="num ${soldPl >= 0 ? "gain" : "loss"}">${rupee(soldPl, 2)}</td>
+      <td></td>
+    </tr>` : "";
+    return;
+  }
   $("pf-head").innerHTML = `<tr>
     <th>Holding</th><th>Platform</th><th class="num">Price</th><th class="num">Day</th>
     <th class="num">${unit}</th><th class="num">Avg</th>
     <th class="num">Invested</th><th class="num">Current</th><th class="num">Profit</th><th class="num">Profit %</th><th class="num">XIRR</th>
     <th class="owner-only"></th>
   </tr>`;
-  $("pf-rows").innerHTML = rows.map((r) => `
+  $("pf-rows").innerHTML = openRows.map((r) => `
     <tr class="${r.gain < 0 ? "loss" : ""}">
       <td><strong>${esc(r.name)}</strong><div class="tiny">${esc(r.symbol)}${fxCol ? " · " + esc(r.currency) : ""}</div></td>
       <td>${esc(r.platform)}</td>
@@ -614,6 +680,54 @@ function renderPortfolio() {
     <td class="num ${t.xirr == null ? "" : t.xirr >= 0 ? "gain" : "loss"}">${t.xirr == null ? "—" : pct(t.xirr)}</td>
     <td class="owner-only"></td>
   </tr>`;
+}
+
+function openSoldDetail(id) {
+  const p = Finance.enrichPortfolio(portfolio);
+  const map = { indian: p.indian, mf: p.mf, foreign: p.foreign };
+  const row = Finance.soldPositionSummaries(map[sleeve] || [], p.trades).find((r) => r.id === id);
+  if (!row) return;
+  const legs = row.trades.map((t) => {
+    const qty = Number(t.qty) || 0;
+    const price = Number(t.price) || 0;
+    const amount = t.side === "sell"
+      ? Number(t.proceeds_inr != null ? t.proceeds_inr : qty * price)
+      : Number(t.cost_inr != null ? t.cost_inr : qty * price);
+    return `<tr>
+      <td>${esc(fmtDate(t.date))}</td>
+      <td>${esc(t.side === "sell" ? "Sell" : "Buy")}</td>
+      <td class="num">${NUM.format(qty)}</td>
+      <td class="num">${NUM.format(price)}</td>
+      <td class="num">${rupee(amount, 2)}</td>
+    </tr>`;
+  }).join("");
+  openOverlay(`
+    <h2>${esc(row.name)}</h2>
+    <p class="lead">${esc(row.symbol)} · ${esc(row.platform || "—")}</p>
+    <div class="confirm-list">
+      <div><span>Bought</span><strong>${esc(fmtDateRange(row.buyDates))}</strong></div>
+      <div><span>Sold</span><strong>${esc(fmtDateRange(row.sellDates))}</strong></div>
+      <div><span>Quantity</span><strong>${NUM.format(row.qty)}</strong></div>
+      <div><span>Buy avg</span><strong>${NUM.format(row.buyAvg)}</strong></div>
+      <div><span>Sell avg</span><strong>${NUM.format(row.sellAvg)}</strong></div>
+      <div><span>Spent</span><strong>${rupee(row.spent, 2)}</strong></div>
+      <div><span>Got</span><strong>${rupee(row.got, 2)}</strong></div>
+      <div><span>Realised P/L</span><strong class="${row.realised >= 0 ? "gain" : "loss"}">${rupee(row.realised, 2)}</strong></div>
+      <div><span>XIRR</span><strong>${row.xirr == null ? "—" : pct(row.xirr)}</strong></div>
+    </div>
+    <div style="overflow:auto;margin-top:16px">
+      <table>
+        <thead><tr><th>Date</th><th>Side</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Amount</th></tr></thead>
+        <tbody>${legs}</tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <span></span>
+      <button class="btn" type="button" data-close="1">Done</button>
+    </div>
+  `);
+  const modal = $("modal");
+  if (modal) modal.classList.add("wide");
 }
 
 function statPair(a, av, b, bv) {
@@ -720,11 +834,13 @@ function renderCalc() {
 }
 
 function openOverlay(html) {
+  $("modal").classList.remove("wide");
   $("modal").innerHTML = html;
   $("overlay").classList.remove("hidden");
 }
 function closeOverlay() {
   $("overlay").classList.add("hidden");
+  $("modal").classList.remove("wide");
   $("modal").innerHTML = "";
   wizard = null;
   tradeForm = null;
@@ -1119,6 +1235,10 @@ $("pf-sort-clear").addEventListener("click", () => {
   if ($("pf-sort")) $("pf-sort").value = pfSort;
   renderPortfolio();
 });
+$("pf-sold-toggle").addEventListener("click", () => {
+  pfShowSold = !pfShowSold;
+  renderPortfolio();
+});
 
 $("expense-rows").addEventListener("click", (e) => {
   const b = e.target.closest("[data-del]");
@@ -1127,6 +1247,11 @@ $("expense-rows").addEventListener("click", (e) => {
 });
 
 $("pf-rows").addEventListener("click", (e) => {
+  const sold = e.target.closest("[data-sold-id]");
+  if (sold) {
+    openSoldDetail(sold.dataset.soldId);
+    return;
+  }
   const b = e.target.closest("[data-trade]");
   if (!b || !isOwner()) return;
   const found = findHolding(b.dataset.id);

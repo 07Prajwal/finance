@@ -5,6 +5,7 @@ import {
   applySell,
   cashflowsForHoldings,
   chartSeries,
+  portfolioCashflows,
   clampCalc,
   computeEmi,
   computeLumpsum,
@@ -18,8 +19,11 @@ import {
   groupSpend,
   marketValueInr,
   parseInrInput,
+  realisedFromTrades,
+  replayAverageCost,
   runCalculator,
   sleeveTotals,
+  soldPositionSummaries,
   sortHoldings,
   spendStats,
   sumAmounts,
@@ -96,6 +100,21 @@ describe("sleeve totals and unrealised %", () => {
     close(p.i.market, 100, 0.01);
     close(p.f.market, 25.68 * 4.90348 * 94.47, 0.01);
     assert.ok(p.total.market > p.i.market);
+  });
+  it("realised P/L is recomputed from dated sells using average cost", () => {
+    const p = enrichPortfolio({
+      fx: {},
+      realised: 0,
+      indian: [{ id: "gold", price: 80, shares: 50, cost: 4000, change: 0 }],
+      mf: [],
+      foreign: [],
+      trades: [
+        { id: "b1", holding_id: "gold", side: "buy", qty: 100, price: 80, date: "2025-01-01", cost_inr: 8000 },
+        { id: "s1", holding_id: "gold", side: "sell", qty: 50, price: 90, date: "2025-06-01", proceeds_inr: 4500, realised: 0 },
+      ],
+    });
+    close(p.realised, 500, 0.01);
+    close(p.indian[0].realised, 500, 0.01);
   });
 });
 
@@ -329,5 +348,47 @@ describe("XIRR", () => {
       new Date("2026-07-01")
     );
     assert.deepEqual(flows.map((f) => f.amount).sort((a, b) => a - b), [-100, 120]);
+  });
+  it("total XIRR includes sold-out trades with no current holding", () => {
+    const flows = portfolioCashflows(
+      [{ id: "keep", market: 200 }],
+      [
+        { holding_id: "keep", side: "buy", date: "2026-01-01", cost_inr: 100 },
+        { holding_id: null, side: "buy", date: "2026-02-01", cost_inr: 50 },
+        { holding_id: null, side: "sell", date: "2026-03-01", proceeds_inr: 60 },
+      ],
+      new Date("2026-07-01")
+    );
+    assert.deepEqual(
+      flows.map((f) => f.amount).sort((a, b) => a - b),
+      [-100, -50, 60, 200]
+    );
+  });
+  it("average-cost realised matches proceeds minus cost removed", () => {
+    const res = replayAverageCost([
+      { id: "b", holding_id: "x", side: "buy", qty: 9, price: 1503, date: "2024-10-24", cost_inr: 13527 },
+      { id: "s1", holding_id: "x", side: "sell", qty: 1, price: 2330.05, date: "2024-10-28", proceeds_inr: 2330.05 },
+      { id: "s2", holding_id: "x", side: "sell", qty: 8, price: 2323.05, date: "2024-10-28", proceeds_inr: 18584.4 },
+    ]);
+    close(res.realised, 7387.45, 0.02);
+    close(res.shares, 0, 1e-9);
+  });
+  it("sold summaries only include fully closed holdings", () => {
+    const rows = soldPositionSummaries(
+      [
+        { id: "open", name: "Keep", symbol: "KEEP.NS", shares: 10, platform: "Zerodha" },
+        { id: "gone", name: "Waaree", symbol: "WAAREEENER.NS", shares: 0, platform: "ICICIDirect" },
+      ],
+      [
+        { holding_id: "open", side: "buy", qty: 10, date: "2024-01-01", cost_inr: 1000 },
+        { holding_id: "gone", side: "buy", qty: 9, date: "2024-10-24", cost_inr: 13527 },
+        { holding_id: "gone", side: "sell", qty: 9, date: "2024-10-28", proceeds_inr: 20914.45 },
+      ]
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, "gone");
+    close(rows[0].realised, 7387.45, 0.02);
+    assert.equal(rows[0].firstBuy, "2024-10-24");
+    assert.equal(rows[0].lastSell, "2024-10-28");
   });
 });

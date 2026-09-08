@@ -163,6 +163,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.secondary:hover { background: var(--surface); }
 .btn.ghost { background: transparent; color: var(--secondary); height: auto; padding: 0; }
 .btn.sm { height: 36px; padding: 0 16px; font-size: 14px; }
+.btn.secondary.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 .btn.danger { background: var(--error); }
 .btn.danger:hover { background: #b42318; }
 .row-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -186,6 +187,8 @@ th { font-size: 12px; font-weight: 500; color: var(--muted); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tfoot td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--ink); }
 tr.loss td.gain { color: var(--error); }
+tr.sold { opacity: 0.78; }
+tr.sold-row { cursor: pointer; }
 .gain { color: var(--gain); }
 .loss { color: var(--error); }
 .chip {
@@ -279,6 +282,7 @@ body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !
   max-height: min(90vh, 720px);
   overflow: auto;
 }
+.modal.wide { width: min(720px, 100%); }
 .modal h2 { font-size: 28px; margin-bottom: 8px; }
 .modal .lead { color: var(--muted); margin-bottom: 24px; font-size: 15px; }
 .modal-footer {

@@ -36,19 +36,23 @@ export function sleeveTotals(rows) {
 
 export function enrichPortfolio(portfolio) {
   const fx = portfolio.fx || { USDINR: 0, EURINR: 0 };
-  const realised = Number(portfolio.realised) || 0;
   const trades = portfolio.trades || [];
   const asOf = new Date();
   const indian = (portfolio.indian || []).map((h) => enrichHolding(h, fx));
   const mf = (portfolio.mf || []).map((h) => enrichHolding(h, fx));
   const foreign = (portfolio.foreign || []).map((h) => enrichHolding(h, fx));
-  const withXirr = (rows) => rows.map((h) => ({
-    ...h,
-    xirr: xirrRate(cashflowsForHoldings([h], trades, asOf)),
-  }));
-  const indianX = withXirr(indian);
-  const mfX = withXirr(mf);
-  const foreignX = withXirr(foreign);
+  const withStats = (rows) => rows.map((h) => {
+    const replay = replayAverageCost((trades || []).filter((t) => h.id && t.holding_id === h.id));
+    return {
+      ...h,
+      xirr: xirrRate(cashflowsForHoldings([h], trades, asOf)),
+      realised: replay.realised,
+      closed: (Number(h.shares) || 0) <= 1e-9,
+    };
+  });
+  const indianX = withStats(indian);
+  const mfX = withStats(mf);
+  const foreignX = withStats(foreign);
   const i = sleeveTotals(indianX);
   const m = sleeveTotals(mfX);
   const f = sleeveTotals(foreignX);
@@ -56,7 +60,12 @@ export function enrichPortfolio(portfolio) {
   i.xirr = xirrRate(cashflowsForHoldings(indianX, trades, asOf));
   m.xirr = xirrRate(cashflowsForHoldings(mfX, trades, asOf));
   f.xirr = xirrRate(cashflowsForHoldings(foreignX, trades, asOf));
-  total.xirr = xirrRate(cashflowsForHoldings([...indianX, ...mfX, ...foreignX], trades, asOf));
+  total.xirr = xirrRate(portfolioCashflows([...indianX, ...mfX, ...foreignX], trades, asOf));
+  i.realised = indianX.reduce((s, h) => s + (Number(h.realised) || 0), 0);
+  m.realised = mfX.reduce((s, h) => s + (Number(h.realised) || 0), 0);
+  f.realised = foreignX.reduce((s, h) => s + (Number(h.realised) || 0), 0);
+  const realised = trades.length ? money2(realisedFromTrades(trades)) : Number(portfolio.realised) || 0;
+  total.realised = realised;
   return { fx, realised, trades, indian: indianX, mf: mfX, foreign: foreignX, i, m, f, total };
 }
 
@@ -278,6 +287,9 @@ export function sortHoldings(rows, sortId = DEFAULT_HOLDING_SORT) {
   const spec = HOLDING_SORTS.find((s) => s.id === sortId) || HOLDING_SORTS[0];
   const mul = spec.dir === "asc" ? 1 : -1;
   return (rows || []).slice().sort((a, b) => {
+    const ac = (Number(a.shares) || 0) <= 1e-9 ? 1 : 0;
+    const bc = (Number(b.shares) || 0) <= 1e-9 ? 1 : 0;
+    if (ac !== bc) return ac - bc;
     if (spec.kind === "text") {
       const av = String(a[spec.key] || a.symbol || "");
       const bv = String(b[spec.key] || b.symbol || "");
@@ -301,6 +313,94 @@ function isoDate(d) {
   if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
   const dt = d instanceof Date ? d : new Date();
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function money2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+export function replayAverageCost(trades) {
+  const rows = (trades || []).slice().sort((a, b) => {
+    const da = dateUTC(isoDate(a.date));
+    const db = dateUTC(isoDate(b.date));
+    if (da !== db) return da - db;
+    const ra = a.side === "sell" ? 1 : 0;
+    const rb = b.side === "sell" ? 1 : 0;
+    if (ra !== rb) return ra - rb;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+  let shares = 0;
+  let cost = 0;
+  let realised = 0;
+  for (const t of rows) {
+    const qty = Number(t.qty) || 0;
+    if (!(qty > 0)) continue;
+    if (t.side === "buy") {
+      const add = Number(t.cost_inr != null ? t.cost_inr : qty * Number(t.price));
+      shares += qty;
+      cost += Number.isFinite(add) ? add : 0;
+      continue;
+    }
+    if (t.side !== "sell") continue;
+    const proceeds = Number(t.proceeds_inr != null ? t.proceeds_inr : qty * Number(t.price));
+    const costRemoved = shares > 0 ? cost * (qty / shares) : 0;
+    realised += (Number.isFinite(proceeds) ? proceeds : 0) - costRemoved;
+    shares = Math.max(0, shares - qty);
+    cost = Math.max(0, cost - costRemoved);
+  }
+  return { realised: money2(realised), shares, cost };
+}
+
+export function realisedFromTrades(trades) {
+  const groups = new Map();
+  for (const t of trades || []) {
+    if (!t.holding_id) continue;
+    if (!groups.has(t.holding_id)) groups.set(t.holding_id, []);
+    groups.get(t.holding_id).push(t);
+  }
+  let realised = 0;
+  for (const list of groups.values()) realised += replayAverageCost(list).realised;
+  return money2(realised);
+}
+
+export function soldPositionSummaries(holdings, trades) {
+  const all = trades || [];
+  return (holdings || []).filter((h) => (Number(h.shares) || 0) <= 1e-9).map((h) => {
+    const rows = all.filter((t) => h.id && t.holding_id === h.id)
+      .slice()
+      .sort((a, b) => dateUTC(isoDate(a.date)) - dateUTC(isoDate(b.date)));
+    const buys = rows.filter((t) => t.side === "buy" && (Number(t.qty) || 0) > 0);
+    const sells = rows.filter((t) => t.side === "sell" && (Number(t.qty) || 0) > 0);
+    if (!sells.length) return null;
+    const qtyBuy = buys.reduce((s, t) => s + (Number(t.qty) || 0), 0);
+    const qtySell = sells.reduce((s, t) => s + (Number(t.qty) || 0), 0);
+    const spent = money2(buys.reduce((s, t) => s + Number(t.cost_inr != null ? t.cost_inr : Number(t.qty) * Number(t.price)), 0));
+    const got = money2(sells.reduce((s, t) => s + Number(t.proceeds_inr != null ? t.proceeds_inr : Number(t.qty) * Number(t.price)), 0));
+    const replay = replayAverageCost(rows);
+    const buyDates = [...new Set(buys.map((t) => isoDate(t.date)).filter(Boolean))];
+    const sellDates = [...new Set(sells.map((t) => isoDate(t.date)).filter(Boolean))];
+    return {
+      id: h.id,
+      name: h.name,
+      symbol: h.symbol,
+      platform: h.platform || "",
+      trades: rows,
+      firstBuy: buyDates[0] || "",
+      lastSell: sellDates[sellDates.length - 1] || "",
+      buyDates,
+      sellDates,
+      qty: qtySell,
+      buyAvg: qtyBuy ? spent / qtyBuy : 0,
+      sellAvg: qtySell ? got / qtySell : 0,
+      spent,
+      got,
+      realised: replay.realised,
+      xirr: xirrRate(tradeCashflows(rows)),
+      gain: replay.realised,
+      cost: spent,
+      market: got,
+    };
+  }).filter(Boolean);
 }
 
 export function tradeCashflows(trades) {
@@ -379,6 +479,16 @@ export function cashflowsForHoldings(holdings, trades, asOf = new Date()) {
   const relevant = (trades || []).filter((t) => ids.has(t.holding_id));
   const flows = tradeCashflows(relevant);
   const tradedIds = new Set(relevant.map((t) => t.holding_id));
+  const market = (holdings || []).reduce((s, h) => (
+    tradedIds.has(h.id) ? s + (Number(h.market) || 0) : s
+  ), 0);
+  if (market > 0) flows.push({ date: isoDate(asOf), amount: market });
+  return flows;
+}
+
+export function portfolioCashflows(holdings, trades, asOf = new Date()) {
+  const flows = tradeCashflows(trades || []);
+  const tradedIds = new Set((trades || []).map((t) => t.holding_id).filter(Boolean));
   const market = (holdings || []).reduce((s, h) => (
     tradedIds.has(h.id) ? s + (Number(h.market) || 0) : s
   ), 0);
