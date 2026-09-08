@@ -126,6 +126,7 @@ async function localApi(op, payload = {}) {
   expenses = data.expenses;
   portfolio = data.portfolio;
   if (!portfolio.realised) portfolio.realised = 0;
+  if (!Array.isArray(portfolio.trades)) portfolio.trades = [];
 
   if (op === "listAll") return { expenses, portfolio };
 
@@ -138,12 +139,27 @@ async function localApi(op, payload = {}) {
   } else if (op === "buy" || op === "sell") {
     const found = findHolding(payload.holdingId);
     if (!found) throw new Error("Holding not found");
+    const date = String(payload.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the buy/sell date");
     const fn = op === "buy" ? Finance.applyBuy : Finance.applySell;
     const res = fn(found.holding, { qty: Number(payload.qty), price: Number(payload.price), fx: portfolio.fx });
     if (!res.ok) throw new Error(res.error);
     portfolio[found.key][found.idx] = res.holding;
     if (op === "sell") portfolio.realised = (Number(portfolio.realised) || 0) + res.trade.realised;
+    portfolio.trades.push({
+      id: nid("t"),
+      holding_id: found.holding.id,
+      side: op,
+      qty: Number(payload.qty),
+      price: Number(payload.price),
+      date,
+      cost_inr: res.trade.costInr,
+      proceeds_inr: res.trade.proceedsInr,
+      realised: res.trade.realised,
+    });
   } else if (op === "newBuy") {
+    const date = String(payload.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the buy date");
     const created = Finance.newHoldingFromBuy({
       id: nid("h"),
       sleeve: payload.sleeve,
@@ -159,6 +175,17 @@ async function localApi(op, payload = {}) {
     created.holding.change = 0;
     created.holding.changePct = 0;
     portfolio[payload.sleeve].push(created.holding);
+    portfolio.trades.push({
+      id: nid("t"),
+      holding_id: created.holding.id,
+      side: "buy",
+      qty: Number(payload.qty),
+      price: Number(payload.price),
+      date,
+      cost_inr: created.trade.costInr,
+      proceeds_inr: 0,
+      realised: 0,
+    });
   } else if (op === "updateQuotes") {
     const apply = (row) => {
       const q = (payload.holdings || []).find((h) => h.id === row.id);
@@ -879,10 +906,11 @@ function openTradeModal(mode, holding) {
     <h2>${esc(title)}</h2>
     ${extra}
     <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
+      <label class="field">Date<input type="date" id="tr-date" value="${todayISO()}" required /></label>
       <label class="field">Quantity<input type="number" id="tr-qty" min="0" step="any" required /></label>
       <label class="field">Price (<span id="tr-price-unit">${unit}</span>)<input type="number" id="tr-price" min="0" step="any" required /></label>
-      <label class="field">Date<input type="date" id="tr-date" value="${todayISO()}" /></label>
     </div>
+    <p class="tiny" style="margin-top:8px">The date is required. XIRR uses each buy and sell date.</p>
     <p class="field-error" id="tr-error"></p>
     <div class="modal-footer">
       <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
@@ -894,11 +922,15 @@ function openTradeModal(mode, holding) {
 async function submitTrade() {
   const qty = Number($("tr-qty").value);
   const price = Number($("tr-price").value);
-  const date = $("tr-date").value || todayISO();
+  const date = ($("tr-date").value || "").trim();
   const err = $("tr-error");
   try {
     if (!(qty > 0) || !(price > 0)) {
       err.textContent = "Quantity and price must be greater than 0";
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      err.textContent = "Pick the buy/sell date. XIRR needs it.";
       return;
     }
     if (tradeForm.mode === "new") {

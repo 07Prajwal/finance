@@ -42,6 +42,12 @@ function asHolding(row) {
   };
 }
 
+function requireTradeDate(body) {
+  const d = String(body?.date || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  return d;
+}
+
 async function listAll(client) {
   const [exp, hold, fxRow, trades] = await Promise.all([
     client.from("expenses").select("*").order("date", { ascending: false }),
@@ -208,6 +214,8 @@ Deno.serve(async (req) => {
     }
 
     if (op === "buy" || op === "sell") {
+      const date = requireTradeDate(body);
+      if (!date) return json({ error: "Pick the buy/sell date" }, 400);
       const { data: row, error } = await client.from("holdings").select("*").eq("id", body.holdingId).maybeSingle();
       if (error) throw error;
       if (!row) return json({ error: "Holding not found" }, 404);
@@ -228,7 +236,7 @@ Deno.serve(async (req) => {
         side: op,
         qty: Number(body.qty),
         price: Number(body.price),
-        date: body.date || new Date().toISOString().slice(0, 10),
+        date,
         cost_inr: res.trade.costInr,
         proceeds_inr: res.trade.proceedsInr,
         realised: res.trade.realised,
@@ -241,6 +249,8 @@ Deno.serve(async (req) => {
       const sleeve = body.sleeve;
       if (!["indian", "mf", "foreign"].includes(sleeve)) return json({ error: "Invalid sleeve" }, 400);
       if (!body.symbol) return json({ error: "Symbol is required" }, 400);
+      const date = requireTradeDate(body);
+      if (!date) return json({ error: "Pick the buy date" }, 400);
       const fx = await fxOf(client);
       const created = newHoldingFromBuy({
         id: crypto.randomUUID(),
@@ -276,7 +286,7 @@ Deno.serve(async (req) => {
         side: "buy",
         qty: Number(body.qty),
         price: Number(body.price),
-        date: body.date || new Date().toISOString().slice(0, 10),
+        date,
         cost_inr: created.trade.costInr,
         proceeds_inr: 0,
         realised: 0,

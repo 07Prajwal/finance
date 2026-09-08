@@ -4,3 +4,4 @@
 supabase/.temp
 node_modules
 *.numbers
+dates/
