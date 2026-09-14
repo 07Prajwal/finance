@@ -149,6 +149,47 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .filter-bar input[type=search] { min-width: 180px; max-width: 280px; }
 #activity-meta { margin-bottom: 12px; }
 .chart-box { position: relative; height: 280px; }
+.chart-with-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.chart-with-legend .chart-box {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 220px;
+}
+.chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 180px;
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+.chart-legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.chart-legend li.empty { grid-template-columns: 1fr auto; color: var(--muted); }
+.chart-legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.chart-legend .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-legend .amt {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -313,6 +354,8 @@ body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !
 
 @media (max-width: 900px) {
   .metrics, .metrics.metrics-2, #pf-metrics, .grid-2, .grid-3, .fields, .calc-layout { grid-template-columns: 1fr; }
+  .chart-with-legend { flex-direction: column; align-items: stretch; }
+  .chart-legend { max-height: none; }
   .hero { padding-top: 48px; }
   .nav { height: auto; }
   .nav-inner {

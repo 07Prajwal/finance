@@ -405,6 +405,17 @@ export function soldPositionSummaries(holdings, trades) {
   }).filter(Boolean);
 }
 
+export function holdingTradeDates(holdingId, trades) {
+  const rows = (trades || []).filter((t) => holdingId && t.holding_id === holdingId);
+  const dates = (side) => [...new Set(
+    rows
+      .filter((t) => t.side === side && (Number(t.qty) || 0) > 0)
+      .map((t) => isoDate(t.date))
+      .filter(Boolean)
+  )].sort();
+  return { buyDates: dates("buy"), sellDates: dates("sell") };
+}
+
 export function tradeCashflows(trades) {
   return (trades || []).map((t) => {
     const date = isoDate(t.date);
@@ -617,8 +628,13 @@ function yearlyPush(yearly, t, invested, value) {
   }
 }
 
+/** Effective monthly rate so "10% expected return" means 10% annualized (Groww). */
+export function monthlyEffectiveRate(annualPct) {
+  return Math.pow(1 + Number(annualPct) / 100, 1 / 12) - 1;
+}
+
 export function computeSip(monthly, rate, years) {
-  const r = rate / 12 / 100;
+  const r = monthlyEffectiveRate(rate);
   const n = years * 12;
   let fv = 0;
   let inv = 0;
@@ -641,7 +657,7 @@ export function computeSip(monthly, rate, years) {
 }
 
 export function computeStepup(monthly, rate, years, step) {
-  const r = rate / 12 / 100;
+  const r = monthlyEffectiveRate(rate);
   const n = years * 12;
   let fv = 0;
   let inv = 0;

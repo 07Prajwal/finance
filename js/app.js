@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=12";
+import * as Finance from "./finance.js?v=13";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -344,17 +344,54 @@ function destroyChart(id) {
   }
 }
 
-function doughnut(id, labels, values) {
+function doughnut(id, labels, values, legendId) {
   destroyChart(id);
   const ctx = $(id);
   if (!ctx || typeof Chart === "undefined") return;
   try {
   charts[id] = new Chart(ctx, {
     type: "doughnut",
-    data: { labels, datasets: [{ data: values, backgroundColor: PALETTE.slice(0, labels.length), borderWidth: 0 }] },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } } }, cutout: "62%" },
+    data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => PALETTE[i % PALETTE.length]), borderWidth: 0 }] },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: !legendId, position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } },
+      },
+      cutout: "62%",
+    },
   });
   } catch { /* canvas may still be hidden on first paint */ }
+  fillChartLegend(legendId, labels, values);
+}
+
+function fillChartLegend(legendId, labels, values) {
+  const el = legendId ? $(legendId) : null;
+  if (!el) return;
+  const total = (values || []).reduce((s, n) => s + (Number(n) || 0), 0);
+  const empty = !labels.length || (labels.length === 1 && labels[0] === "No spend yet");
+  if (empty) {
+    el.innerHTML = `<li class="empty"><span class="name">No spend yet</span><span class="amt">—</span></li>`;
+    return;
+  }
+  el.innerHTML = labels.map((label, i) => {
+    const amount = Number(values[i]) || 0;
+    const share = total ? Math.round((amount / total) * 100) : 0;
+    return `<li>
+      <span class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></span>
+      <span class="name">${esc(label)}</span>
+      <span class="amt">${rupee(amount)}<span class="tiny"> ${share}%</span></span>
+    </li>`;
+  }).join("");
+}
+
+function doughnutOrEmpty(id, grouped) {
+  const labels = Object.keys(grouped);
+  doughnut(
+    id,
+    labels.length ? labels : ["No spend yet"],
+    labels.length ? labels.map((k) => grouped[k]) : [1],
+    `${id}-legend`
+  );
 }
 
 function bar(id, labels, values, color = "#0071E3") {
@@ -464,11 +501,6 @@ function yearOptions(extra) {
   const years = Finance.expenseYears(expenses);
   if (extra && !years.includes(String(extra))) years.unshift(String(extra));
   return years;
-}
-
-function doughnutOrEmpty(id, grouped) {
-  const labels = Object.keys(grouped);
-  doughnut(id, labels.length ? labels : ["No spend yet"], labels.length ? labels.map((k) => grouped[k]) : [1]);
 }
 
 function renderCatChart() {
@@ -647,15 +679,20 @@ function renderPortfolio() {
     return;
   }
   $("pf-head").innerHTML = `<tr>
-    <th>Holding</th><th>Platform</th><th class="num">Price</th><th class="num">Day</th>
+    <th>Holding</th><th>Platform</th><th>Bought</th><th>Sold</th>
+    <th class="num">Price</th><th class="num">Day</th>
     <th class="num">${unit}</th><th class="num">Avg</th>
     <th class="num">Invested</th><th class="num">Current</th><th class="num">Profit</th><th class="num">Profit %</th><th class="num">XIRR</th>
     <th class="owner-only"></th>
   </tr>`;
-  $("pf-rows").innerHTML = openRows.map((r) => `
+  $("pf-rows").innerHTML = openRows.map((r) => {
+    const dates = Finance.holdingTradeDates(r.id, p.trades);
+    return `
     <tr class="${r.gain < 0 ? "loss" : ""}">
       <td><strong>${esc(r.name)}</strong><div class="tiny">${esc(r.symbol)}${fxCol ? " · " + esc(r.currency) : ""}</div></td>
       <td>${esc(r.platform)}</td>
+      <td>${esc(fmtDateRange(dates.buyDates))}</td>
+      <td>${esc(fmtDateRange(dates.sellDates))}</td>
       <td class="num">${NUM.format(r.price)}</td>
       <td class="num ${r.changePct >= 0 ? "gain" : "loss"}">${pct(r.changePct)}</td>
       <td class="num">${NUM.format(r.shares)}</td>
@@ -669,9 +706,10 @@ function renderPortfolio() {
         <button class="icon-btn buy" type="button" data-trade="buy" data-id="${esc(r.id)}">Buy</button>
         <button class="icon-btn sell" type="button" data-trade="sell" data-id="${esc(r.id)}">Sell</button>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   $("pf-foot").innerHTML = `<tr>
-    <td>Total</td><td></td><td></td><td></td>
+    <td>Total</td><td></td><td></td><td></td><td></td><td></td>
     <td class="num">${NUM.format(t.shares)}</td><td></td>
     <td class="num">${rupee(t.cost)}</td>
     <td class="num">${rupee(t.market)}</td>

@@ -11,6 +11,8 @@ import {
   computeLumpsum,
   computeSip,
   computeStepup,
+  holdingTradeDates,
+  monthlyEffectiveRate,
   enrichHolding,
   enrichPortfolio,
   filterExpenses,
@@ -162,23 +164,23 @@ describe("buy / sell", () => {
 });
 
 describe("calculators", () => {
-  it("SIP matches beginning-of-month compound annuity", () => {
-    const r = 0.12 / 12;
-    const n = 120;
-    const expected = 10000 * ((Math.pow(1 + r, n) - 1) / r) * (1 + r);
-    const sip = computeSip(10000, 12, 10);
-    close(sip.hero, expected, 1);
-    assert.equal(sip.invested, 1_200_000);
+  it("SIP matches Groww: effective monthly rate, contribution at start of month", () => {
+    const r = monthlyEffectiveRate(10);
+    close(r, Math.pow(1.1, 1 / 12) - 1, 1e-12);
+    const sip = computeSip(24000, 10, 10);
+    close(sip.returns, 1_954_982, 1);
+    assert.equal(sip.invested, 2_880_000);
     assert.equal(sip.chartReturnsLabel, "Est. returns");
     assert.equal(sip.yearly.length, 10);
   });
 
-  it("step-up SIP increases monthly amount once a year", () => {
+  it("step-up SIP matches Groww with the same rate convention", () => {
     const plain = computeSip(10000, 12, 2);
     const stepped = computeStepup(10000, 12, 2, 10);
     assert.ok(stepped.invested > plain.invested);
     assert.ok(stepped.hero > plain.hero);
     close(stepped.invested, 10000 * 12 + 11000 * 12, 0.01);
+    close(computeStepup(24000, 10, 10, 10).returns, 2_563_396, 1);
   });
 
   it("lumpsum compounds annually", () => {
@@ -410,5 +412,15 @@ describe("XIRR", () => {
     assert.equal(rows[0].firstBuy, "2024-10-24");
     assert.equal(rows[0].lastSell, "2024-10-28");
     assert.equal(rows[0].xirr, null);
+  });
+  it("open holding trade dates list buy and sell ISO dates", () => {
+    const dates = holdingTradeDates("keep", [
+      { holding_id: "keep", side: "buy", qty: 5, date: "2024-08-14" },
+      { holding_id: "keep", side: "buy", qty: 5, date: "2024-10-09" },
+      { holding_id: "keep", side: "sell", qty: 2, date: "2025-01-02" },
+      { holding_id: "other", side: "buy", qty: 1, date: "2024-01-01" },
+    ]);
+    assert.deepEqual(dates.buyDates, ["2024-08-14", "2024-10-09"]);
+    assert.deepEqual(dates.sellDates, ["2025-01-02"]);
   });
 });

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finance</title>
-  <link rel="stylesheet" href="css/app.css?v=13" />
+  <link rel="stylesheet" href="css/app.css?v=14" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -99,7 +99,10 @@
                   <select id="cat-type" aria-label="Category chart type"></select>
                 </div>
               </div>
-              <div class="chart-box"><canvas id="cat-chart"></canvas></div>
+              <div class="chart-with-legend">
+                <div class="chart-box"><canvas id="cat-chart"></canvas></div>
+                <ul class="chart-legend" id="cat-chart-legend"></ul>
+              </div>
             </div>
             <div class="card">
               <div class="chart-head">
@@ -109,7 +112,10 @@
                   <select id="type-category" aria-label="Type chart category"></select>
                 </div>
               </div>
-              <div class="chart-box"><canvas id="type-chart"></canvas></div>
+              <div class="chart-with-legend">
+                <div class="chart-box"><canvas id="type-chart"></canvas></div>
+                <ul class="chart-legend" id="type-chart-legend"></ul>
+              </div>
             </div>
           </div>
           <div class="card" style="margin-bottom:20px">
@@ -206,7 +212,7 @@
         <div class="hero">
           <div class="kicker">Planning tools</div>
           <h1>SIP, step-up, lumpsum, EMI.</h1>
-          <p class="lead">Type a number or drag the slider. Estimates only.</p>
+          <p class="lead">Type a number or drag the slider. Estimates only. SIP and step-up treat expected return as annualized, same as Groww.</p>
         </div>
         <div class="wrap section" style="padding-top:0">
           <div class="tabs" id="calc-tabs">
@@ -237,6 +243,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=12"></script>
+  <script type="module" src="js/app.js?v=13"></script>
 </body>
 </html>

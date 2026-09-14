@@ -278,8 +278,12 @@ function yearlyPush(yearly, t, invested, value) {
   }
 }
 
+function monthlyEffectiveRate(annualPct) {
+  return Math.pow(1 + Number(annualPct) / 100, 1 / 12) - 1;
+}
+
 export function computeSip(monthly, rate, years) {
-  const r = rate / 12 / 100;
+  const r = monthlyEffectiveRate(rate);
   const n = years * 12;
   let fv = 0;
   let inv = 0;
@@ -302,7 +306,7 @@ export function computeSip(monthly, rate, years) {
 }
 
 export function computeStepup(monthly, rate, years, step) {
-  const r = rate / 12 / 100;
+  const r = monthlyEffectiveRate(rate);
   const n = years * 12;
   let fv = 0;
   let inv = 0;
