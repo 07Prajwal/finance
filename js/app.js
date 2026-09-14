@@ -1,13 +1,16 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=13";
+import * as Finance from "./finance.js?v=14";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
 const LOCAL_DATA_KEY = "finance.data.v1";
+const THEME_KEY = "finance.theme.v1";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
+const IDLE_MS = 10 * 60 * 1000;
 
 const NUM = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
-const PALETTE = ["#0071E3", "#1D1D1F", "#6E6E73", "#86868b", "#A1A1A6", "#D2D2D7"];
+const PALETTE_LIGHT = ["#0071E3", "#1D1D1F", "#6E6E73", "#86868b", "#A1A1A6", "#D2D2D7"];
+const PALETTE_DARK = ["#0A84FF", "#F5F5F7", "#A1A1A6", "#8E8E93", "#636366", "#48484A"];
 
 const EXPENSE_TYPES = ["Our Expense", "Home Expense", "My Expense"];
 const EXPENSE_CATS = ["Food", "Quick Delivery", "Travel", "Shopping", "Medicine", "Other"];
@@ -28,6 +31,9 @@ let yearChartYear = String(new Date().getFullYear());
 let pfSort = Finance.DEFAULT_HOLDING_SORT;
 let sleeve = "indian";
 let pfShowSold = false;
+let pfPlatform = "";
+let idleTimer = 0;
+let idleSaveTimer = 0;
 let calcKind = "sip";
 let calcState = { monthly: 10000, rate: 12, years: 10, step: 10, lump: 100000, loan: 2500000, loanRate: 8.5, tenure: 20 };
 let calcTimer = 0;
@@ -74,6 +80,11 @@ function loadSession() {
     if (!raw) return null;
     const s = JSON.parse(raw);
     if (!s?.token || !s?.exp || s.exp < Date.now()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    if (!s.lastActive) s.lastActive = Date.now();
+    if (Date.now() - s.lastActive > IDLE_MS) {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
@@ -287,17 +298,77 @@ function unlockApp() {
   $("app-shell").classList.remove("locked");
   $("local-banner").classList.toggle("hidden", isRemoteConfigured());
   setRoleChrome();
+  touchSession();
   if (!location.hash || location.hash === "#") location.hash = "home";
   activatePage(currentPageId());
 }
 
 function lockApp() {
   session = null;
+  clearTimeout(idleTimer);
+  clearTimeout(idleSaveTimer);
   localStorage.removeItem(SESSION_KEY);
   $("app-shell").classList.add("locked");
   $("local-banner").classList.add("hidden");
   document.body.classList.remove("is-owner");
+  if ($("overlay") && !$("overlay").classList.contains("hidden")) closeOverlay();
 }
+
+function touchSession() {
+  if (!session) return;
+  session.lastActive = Date.now();
+  clearTimeout(idleSaveTimer);
+  idleSaveTimer = setTimeout(() => {
+    if (session) saveSession(session);
+  }, 1000);
+  scheduleIdleLogout();
+}
+
+function scheduleIdleLogout() {
+  clearTimeout(idleTimer);
+  if (!session) return;
+  const wait = Math.max(0, (session.lastActive || Date.now()) + IDLE_MS - Date.now());
+  idleTimer = setTimeout(() => {
+    if (!session) return;
+    if (Date.now() - (session.lastActive || 0) < IDLE_MS) {
+      scheduleIdleLogout();
+      return;
+    }
+    lockApp();
+    $("login-gate").classList.remove("hidden");
+    showLoginError("Signed out after 10 minutes idle.");
+  }, wait);
+}
+
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
+  document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
+    btn.textContent = next === "dark" ? "Light" : "Dark";
+    btn.setAttribute("aria-label", next === "dark" ? "Switch to light mode" : "Switch to dark mode");
+  });
+}
+
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+function chartPalette() {
+  return currentTheme() === "dark" ? PALETTE_DARK : PALETTE_LIGHT;
+}
+
+function chartTick() { return cssVar("--muted", "#6E6E73"); }
+function chartGrid() { return cssVar("--border", "#E5E7EB"); }
+function chartInk() { return cssVar("--ink", "#1D1D1F"); }
+function chartPrimary() { return cssVar("--primary", "#0071E3"); }
 
 function showLoginError(msg) {
   const el = $("login-error");
@@ -351,11 +422,15 @@ function doughnut(id, labels, values, legendId) {
   try {
   charts[id] = new Chart(ctx, {
     type: "doughnut",
-    data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => PALETTE[i % PALETTE.length]), borderWidth: 0 }] },
+    data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => chartPalette()[i % chartPalette().length]), borderWidth: 0 }] },
     options: {
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: !legendId, position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } },
+        legend: {
+          display: !legendId,
+          position: "bottom",
+          labels: { boxWidth: 10, font: { size: 12 }, color: chartTick() },
+        },
       },
       cutout: "62%",
     },
@@ -377,7 +452,7 @@ function fillChartLegend(legendId, labels, values) {
     const amount = Number(values[i]) || 0;
     const share = total ? Math.round((amount / total) * 100) : 0;
     return `<li>
-      <span class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></span>
+      <span class="swatch" style="background:${chartPalette()[i % chartPalette().length]}"></span>
       <span class="name">${esc(label)}</span>
       <span class="amt">${rupee(amount)}<span class="tiny"> ${share}%</span></span>
     </li>`;
@@ -394,20 +469,21 @@ function doughnutOrEmpty(id, grouped) {
   );
 }
 
-function bar(id, labels, values, color = "#0071E3") {
+function bar(id, labels, values, color) {
   destroyChart(id);
   const ctx = $(id);
   if (!ctx || typeof Chart === "undefined") return;
+  const fill = color || chartPrimary();
   try {
   charts[id] = new Chart(ctx, {
     type: "bar",
-    data: { labels, datasets: [{ data: values, backgroundColor: color, borderRadius: 4, barPercentage: 0.6 }] },
+    data: { labels, datasets: [{ data: values, backgroundColor: fill, borderRadius: 4, barPercentage: 0.6 }] },
     options: {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: "#6E6E73" } },
-        y: { grid: { color: "#E5E7EB" }, ticks: { color: "#6E6E73", callback: (v) => Finance.formatInr(v) }, border: { display: false } },
+        x: { grid: { display: false }, ticks: { color: chartTick() } },
+        y: { grid: { color: chartGrid() }, ticks: { color: chartTick(), callback: (v) => Finance.formatInr(v) }, border: { display: false } },
       },
     },
   });
@@ -424,16 +500,16 @@ function lineStack(id, labels, invested, returns, investedLabel, returnsLabel) {
     data: {
       labels,
       datasets: [
-        { label: investedLabel, data: invested, backgroundColor: "#1D1D1F", stack: "a", borderRadius: 2 },
-        { label: returnsLabel, data: returns, backgroundColor: "#0071E3", stack: "a", borderRadius: 2 },
+        { label: investedLabel, data: invested, backgroundColor: chartInk(), stack: "a", borderRadius: 2 },
+        { label: returnsLabel, data: returns, backgroundColor: chartPrimary(), stack: "a", borderRadius: 2 },
       ],
     },
     options: {
       maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 12 } } } },
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 12 }, color: chartTick() } } },
       scales: {
-        x: { stacked: true, grid: { display: false } },
-        y: { stacked: true, grid: { color: "#E5E7EB" }, border: { display: false }, ticks: { callback: (v) => Finance.formatInr(v) } },
+        x: { stacked: true, grid: { display: false }, ticks: { color: chartTick() } },
+        y: { stacked: true, grid: { color: chartGrid() }, border: { display: false }, ticks: { color: chartTick(), callback: (v) => Finance.formatInr(v) } },
       },
     },
   });
@@ -593,8 +669,7 @@ function fmtDate(iso) {
   const s = String(iso || "").slice(0, 10);
   const [y, m, d] = s.split("-").map(Number);
   if (!y || !m || !d) return "—";
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${d} ${months[m - 1]} ${y}`;
+  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
 }
 
 function fmtDateRange(dates) {
@@ -615,13 +690,23 @@ function renderPortfolio() {
     { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs 1 year of history" : "True annualized yield" },
   ]);
   doughnut("alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks"], [p.i.market, p.m.market, p.f.market]);
-  bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign"], [p.i.gain, p.m.gain, p.f.gain], "#1D1D1F");
+  bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign"], [p.i.gain, p.m.gain, p.f.gain], chartInk());
 
   const map = { indian: p.indian, mf: p.mf, foreign: p.foreign };
   const totals = { indian: p.i, mf: p.m, foreign: p.f };
-  const openRows = Finance.sortHoldings((map[sleeve] || []).filter((r) => (Number(r.shares) || 0) > 1e-9), pfSort);
-  const soldRows = Finance.sortHoldings(Finance.soldPositionSummaries(map[sleeve] || [], p.trades), pfSort);
-  const t = totals[sleeve];
+  const sleeveRows = map[sleeve] || [];
+  const platforms = Finance.uniquePlatforms(sleeveRows);
+  if (pfPlatform && !platforms.some((x) => x.toLowerCase() === pfPlatform.toLowerCase())) pfPlatform = "";
+  fillSelect("pf-platform", platforms.map((x) => ({ value: x, label: x })), pfPlatform, "All platforms");
+  const openRows = Finance.sortHoldings(
+    sleeveRows.filter((r) => (Number(r.shares) || 0) > 1e-9 && Finance.matchesPlatform(r, pfPlatform)),
+    pfSort
+  );
+  const soldRows = Finance.sortHoldings(
+    Finance.soldPositionSummaries(sleeveRows, p.trades).filter((r) => Finance.matchesPlatform(r, pfPlatform)),
+    pfSort
+  );
+  const t = pfPlatform ? Finance.sleeveTotals(openRows) : totals[sleeve];
   const fxCol = sleeve === "foreign";
   const unit = sleeve === "mf" ? "Units" : "Shares";
   const sortEl = $("pf-sort");
@@ -631,22 +716,22 @@ function renderPortfolio() {
   }
   if (sortEl) sortEl.value = pfSort;
   const title = $("pf-table-title");
-  if (title) title.textContent = pfShowSold ? "Sold stocks" : "Holdings";
+  if (title) title.textContent = pfShowSold ? "Sold holdings" : "Holdings";
   const soldBtn = $("pf-sold-toggle");
   if (soldBtn) {
     soldBtn.classList.toggle("on", pfShowSold);
     soldBtn.setAttribute("aria-pressed", pfShowSold ? "true" : "false");
-    soldBtn.textContent = pfShowSold ? "Back to holdings" : "Sold stocks";
+    soldBtn.textContent = pfShowSold ? "Back to holdings" : "Sold holdings";
   }
   const note = $("pf-table-note");
   if (note) {
     note.textContent = pfShowSold
-      ? "Fully sold names only. Tap a row for every buy and sell. Realised P/L above also includes booked profit on stocks you still hold."
+      ? "Fully sold names only. Tap a row for every buy and sell. Realised P/L above also includes booked profit on holdings you still hold."
       : "XIRR skips lots held under a year, so a short spike is not annualized. Today's value is the last cash flow.";
   }
   if (pfShowSold) {
     $("pf-head").innerHTML = `<tr>
-      <th>Stock</th><th>Platform</th><th>Bought</th><th>Sold</th>
+      <th>Holding</th><th>Platform</th><th>Bought</th><th>Sold</th>
       <th class="num">${unit}</th><th class="num">Buy avg</th><th class="num">Sell avg</th>
       <th class="num">Spent</th><th class="num">Got</th><th class="num">P/L</th><th class="num">XIRR</th>
     </tr>`;
@@ -663,7 +748,7 @@ function renderPortfolio() {
         <td class="num">${rupee(r.got, 2)}</td>
         <td class="num ${r.realised >= 0 ? "gain" : "loss"}">${rupee(r.realised, 2)}</td>
         <td class="num ${r.xirr == null ? "" : r.xirr >= 0 ? "gain" : "loss"}">${r.xirr == null ? "—" : pct(r.xirr)}</td>
-      </tr>`).join("") : `<tr><td colspan="11" class="tiny">No sold stocks in this list.</td></tr>`;
+      </tr>`).join("") : `<tr><td colspan="11" class="tiny">No sold holdings in this list.</td></tr>`;
     const soldQty = soldRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
     const soldSpent = soldRows.reduce((s, r) => s + (Number(r.spent) || 0), 0);
     const soldGot = soldRows.reduce((s, r) => s + (Number(r.got) || 0), 0);
@@ -679,20 +764,19 @@ function renderPortfolio() {
     return;
   }
   $("pf-head").innerHTML = `<tr>
-    <th>Holding</th><th>Platform</th><th>Bought</th><th>Sold</th>
+    <th>Holding</th><th>Platform</th><th>Bought</th>
     <th class="num">Price</th><th class="num">Day</th>
     <th class="num">${unit}</th><th class="num">Avg</th>
     <th class="num">Invested</th><th class="num">Current</th><th class="num">Profit</th><th class="num">Profit %</th><th class="num">XIRR</th>
     <th class="owner-only"></th>
   </tr>`;
-  $("pf-rows").innerHTML = openRows.map((r) => {
+  $("pf-rows").innerHTML = openRows.length ? openRows.map((r) => {
     const dates = Finance.holdingTradeDates(r.id, p.trades);
     return `
     <tr class="${r.gain < 0 ? "loss" : ""}">
       <td><strong>${esc(r.name)}</strong><div class="tiny">${esc(r.symbol)}${fxCol ? " · " + esc(r.currency) : ""}</div></td>
       <td>${esc(r.platform)}</td>
       <td>${esc(fmtDateRange(dates.buyDates))}</td>
-      <td>${esc(fmtDateRange(dates.sellDates))}</td>
       <td class="num">${NUM.format(r.price)}</td>
       <td class="num ${r.changePct >= 0 ? "gain" : "loss"}">${pct(r.changePct)}</td>
       <td class="num">${NUM.format(r.shares)}</td>
@@ -707,17 +791,17 @@ function renderPortfolio() {
         <button class="icon-btn sell" type="button" data-trade="sell" data-id="${esc(r.id)}">Sell</button>
       </td>
     </tr>`;
-  }).join("");
-  $("pf-foot").innerHTML = `<tr>
-    <td>Total</td><td></td><td></td><td></td><td></td><td></td>
+  }).join("") : `<tr><td colspan="13" class="tiny">No holdings on this platform.</td></tr>`;
+  $("pf-foot").innerHTML = openRows.length ? `<tr>
+    <td>Total</td><td></td><td></td><td></td><td></td>
     <td class="num">${NUM.format(t.shares)}</td><td></td>
     <td class="num">${rupee(t.cost)}</td>
     <td class="num">${rupee(t.market)}</td>
     <td class="num ${t.gain >= 0 ? "gain" : "loss"}">${rupee(t.gain)}</td>
     <td class="num ${t.gainPct >= 0 ? "gain" : "loss"}">${pct(t.gainPct)}</td>
-    <td class="num ${t.xirr == null ? "" : t.xirr >= 0 ? "gain" : "loss"}">${t.xirr == null ? "—" : pct(t.xirr)}</td>
+    <td class="num ${!pfPlatform && t.xirr != null ? (t.xirr >= 0 ? "gain" : "loss") : ""}">${!pfPlatform && t.xirr != null ? pct(t.xirr) : "—"}</td>
     <td class="owner-only"></td>
-  </tr>`;
+  </tr>` : "";
 }
 
 function openSoldDetail(id) {
@@ -1222,6 +1306,17 @@ $("login-form").addEventListener("submit", async (e) => {
 $("sign-out").addEventListener("click", () => {
   lockApp();
   $("login-gate").classList.remove("hidden");
+  showLoginError("");
+});
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-theme-toggle]");
+  if (!btn) return;
+  applyTheme(currentTheme() === "dark" ? "light" : "dark");
+  if (session) showPage();
+});
+$("pf-platform").addEventListener("change", (e) => {
+  pfPlatform = e.target.value;
+  renderPortfolio();
 });
 
 $("nav-add-expense").addEventListener("click", startExpenseWizard);
@@ -1393,8 +1488,22 @@ window.addEventListener("hashchange", showPage);
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("overlay").classList.contains("hidden")) closeOverlay();
 });
+["pointerdown", "keydown", "scroll", "touchstart", "click"].forEach((ev) => {
+  window.addEventListener(ev, () => touchSession(), { passive: true, capture: true });
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !session) return;
+  if (Date.now() - (session.lastActive || 0) > IDLE_MS) {
+    lockApp();
+    $("login-gate").classList.remove("hidden");
+    showLoginError("Signed out after 10 minutes idle.");
+    return;
+  }
+  touchSession();
+});
 
 (async function boot() {
+  applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : currentTheme());
   if (!isRemoteConfigured() && !allowLocalMode()) {
     $("setup-gate").classList.remove("hidden");
     return;

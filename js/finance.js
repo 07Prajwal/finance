@@ -283,6 +283,23 @@ export const HOLDING_SORTS = [
   { id: "cost-asc", key: "cost", dir: "asc", label: "Invested · low to high" },
 ];
 
+export function uniquePlatforms(holdings) {
+  const seen = new Map();
+  for (const h of holdings || []) {
+    const label = String(h.platform || "").trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (!seen.has(key)) seen.set(key, label);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+}
+
+export function matchesPlatform(holding, platform) {
+  const want = String(platform || "").trim();
+  if (!want) return true;
+  return String(holding?.platform || "").trim().toLowerCase() === want.toLowerCase();
+}
+
 export function sortHoldings(rows, sortId = DEFAULT_HOLDING_SORT) {
   const spec = HOLDING_SORTS.find((s) => s.id === sortId) || HOLDING_SORTS[0];
   const mul = spec.dir === "asc" ? 1 : -1;

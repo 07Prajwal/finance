@@ -21,6 +21,7 @@ import {
   groupSpend,
   isXirrEligible,
   marketValueInr,
+  matchesPlatform,
   parseInrInput,
   realisedFromTrades,
   replayAverageCost,
@@ -30,6 +31,7 @@ import {
   sortHoldings,
   spendStats,
   sumAmounts,
+  uniquePlatforms,
   validateCalcInputs,
   xirr,
   yearlyByMonth,
@@ -319,6 +321,19 @@ describe("holding sort", () => {
     const mixed = [{ name: "Reliance" }, { name: "HDFC Bank" }, { name: "Adani Ports" }];
     assert.deepEqual(sortHoldings(mixed).map((r) => r.name), ["Adani Ports", "HDFC Bank", "Reliance"]);
     assert.equal(sortHoldings(mixed, "name-desc")[0].name, "Reliance");
+  });
+  it("lists distinct platforms and matches case-insensitively", () => {
+    const list = uniquePlatforms([
+      { platform: "Zerodha" },
+      { platform: "zerodha" },
+      { platform: " Groww " },
+      { platform: "" },
+      { platform: "ICICIDirect" },
+    ]);
+    assert.deepEqual(list, ["Groww", "ICICIDirect", "Zerodha"]);
+    assert.equal(matchesPlatform({ platform: "Zerodha" }, ""), true);
+    assert.equal(matchesPlatform({ platform: "Zerodha" }, "zerodha"), true);
+    assert.equal(matchesPlatform({ platform: "Groww" }, "Zerodha"), false);
   });
 });
 

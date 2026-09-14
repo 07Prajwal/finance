@@ -4,7 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finance</title>
-  <link rel="stylesheet" href="css/app.css?v=14" />
+  <script>
+    try {
+      if (localStorage.getItem("finance.theme.v1") === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    } catch (e) { /* ignore */ }
+  </script>
+  <link rel="stylesheet" href="css/app.css?v=15" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -21,6 +28,7 @@
       <div class="kicker">Finance</div>
       <h1>Welcome back.</h1>
       <p>Enter the password to open the tracker.</p>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark</button>
       <form id="login-form">
         <input type="password" name="password" autocomplete="current-password" required placeholder="Password" />
         <button class="btn" type="submit">Continue</button>
@@ -44,6 +52,7 @@
         </div>
         <div class="nav-meta">
           <span class="role-chip" id="role-chip"></span>
+          <button class="theme-toggle" type="button" id="theme-toggle" data-theme-toggle aria-pressed="false">Dark</button>
           <button class="sign-out" type="button" id="sign-out">Sign out</button>
         </div>
       </div>
@@ -191,7 +200,8 @@
             <div class="chart-head">
               <h3 id="pf-table-title">Holdings</h3>
               <div class="row-actions">
-                <button type="button" class="btn secondary sm" id="pf-sold-toggle">Sold stocks</button>
+                <button type="button" class="btn secondary sm" id="pf-sold-toggle">Sold holdings</button>
+                <select id="pf-platform" aria-label="Filter by platform"></select>
                 <select id="pf-sort" aria-label="Sort holdings"></select>
                 <button type="button" class="btn ghost sm" id="pf-sort-clear">Clear</button>
               </div>
@@ -243,6 +253,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=13"></script>
+  <script type="module" src="js/app.js?v=14"></script>
 </body>
 </html>

@@ -2,6 +2,7 @@
   --primary: #0071E3;
   --primary-60: #2B8AF0;
   --primary-80: #005BBB;
+  --primary-soft: #f0f7ff;
   --secondary: #0066CC;
   --ink: #1D1D1F;
   --white: #FFFFFF;
@@ -10,9 +11,30 @@
   --border: #E5E7EB;
   --error: #D92D20;
   --gain: #248A3D;
+  --nav-bg: rgba(255,255,255,.72);
+  --overlay: rgba(0,0,0,.4);
   --nav-h: 48px;
   --radius: 8px;
   --shadow: none;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --primary: #0A84FF;
+  --primary-60: #409CFF;
+  --primary-80: #0077ED;
+  --primary-soft: #0b2744;
+  --secondary: #64D2FF;
+  --ink: #F5F5F7;
+  --white: #000000;
+  --surface: #1C1C1E;
+  --muted: #A1A1A6;
+  --border: #3A3A3C;
+  --error: #FF453A;
+  --gain: #30D158;
+  --nav-bg: rgba(0,0,0,.72);
+  --overlay: rgba(0,0,0,.64);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -35,7 +57,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 40;
   height: var(--nav-h);
   display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,.72);
+  background: var(--nav-bg);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--border);
@@ -65,7 +87,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-size: 11px; font-weight: 500; color: var(--muted);
   background: var(--surface); border-radius: 9999px; padding: 4px 8px;
 }
-.sign-out {
+.sign-out, .theme-toggle {
   background: none; border: 0; cursor: pointer;
   font-size: 12px; color: var(--secondary);
 }
@@ -205,7 +227,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.secondary:hover { background: var(--surface); }
 .btn.ghost { background: transparent; color: var(--secondary); height: auto; padding: 0; }
 .btn.sm { height: 36px; padding: 0 16px; font-size: 14px; }
-.btn.secondary.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.btn.secondary.on { background: var(--ink); color: var(--white); border-color: var(--ink); }
 .btn.danger { background: var(--error); }
 .btn.danger:hover { background: #b42318; }
 .row-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -242,14 +264,14 @@ tr.sold-row { cursor: pointer; }
   border: 0; background: var(--surface); border-radius: 9999px; padding: 8px 12px;
   cursor: pointer; font-size: 14px; font-weight: 500;
 }
-.filters button.on { background: var(--ink); color: #fff; }
+.filters button.on { background: var(--ink); color: var(--white); }
 
 .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
 .tabs button {
   border: 0; background: var(--surface); height: 36px; padding: 0 16px;
   border-radius: 9999px; cursor: pointer; font-size: 14px; font-weight: 500;
 }
-.tabs button.on { background: var(--ink); color: #fff; }
+.tabs button.on { background: var(--ink); color: var(--white); }
 
 .calc-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .slider-row { margin-bottom: 20px; }
@@ -306,13 +328,14 @@ body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !
   text-align: center;
 }
 .login-card h1 { font-size: 40px; margin-bottom: 8px; }
-.login-card p { color: var(--muted); margin-bottom: 28px; }
+.login-card p { color: var(--muted); margin-bottom: 16px; }
+.login-card .theme-toggle { margin: 0 auto 20px; }
 .login-card form { display: grid; gap: 12px; }
 .login-card input { text-align: center; }
 
 .overlay {
   position: fixed; inset: 0; z-index: 80;
-  background: rgba(0,0,0,.4);
+  background: var(--overlay);
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
 }
@@ -336,7 +359,7 @@ body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !
   border-radius: 12px; cursor: pointer; font-size: 17px; font-weight: 500;
 }
 .step-pills button.on {
-  border-color: var(--primary); background: #f0f7ff; color: var(--primary);
+  border-color: var(--primary); background: var(--primary-soft); color: var(--primary);
 }
 .wizard-progress {
   font-size: 12px; color: var(--muted); margin-bottom: 8px;
