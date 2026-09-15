@@ -780,3 +780,60 @@ export function chartSeries(result) {
     returnsLabel: result.chartReturnsLabel,
   };
 }
+
+export const INCOME_SINCE = "2022-10-25";
+
+function isoFromParts(y, m, d) {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** 24th of this month once that day has arrived, otherwise 24th of last month. */
+export function suggestedSalaryDate(now = new Date()) {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = now.getDate();
+  if (d >= 24) return isoFromParts(y, m + 1, 24);
+  const prev = new Date(y, m, 0);
+  return isoFromParts(prev.getFullYear(), prev.getMonth() + 1, 24);
+}
+
+export function moneyPicture({
+  expenses = [],
+  income = [],
+  fds = [],
+  accounts = [],
+  portfolioCost = 0,
+  portfolioMarket = 0,
+} = {}) {
+  const takeHome = (income || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const pf = (income || []).reduce((s, r) => s + (Number(r.pf) || 0), 0);
+  const tax = (income || []).reduce((s, r) => s + (Number(r.tax) || 0), 0);
+  const ssip = (income || []).reduce((s, r) => s + (Number(r.ssip) || 0), 0);
+  const earned = takeHome;
+  const spent = sumAmounts(expenses);
+  const fdInvested = (fds || []).reduce((s, r) => s + (Number(r.invested) || 0), 0);
+  const fdPrincipal = (fds || []).reduce((s, r) => s + (Number(r.principal) || 0), 0);
+  const fdMaturity = (fds || []).reduce((s, r) => s + (Number(r.maturity_amount) || 0), 0);
+  const invested = (Number(portfolioCost) || 0) + fdInvested;
+  const cash = (accounts || []).reduce((s, r) => s + (Number(r.balance) || 0), 0);
+  const haveNow = cash + (Number(portfolioMarket) || 0) + fdPrincipal;
+  const allocated = spent + invested + cash;
+  const gap = earned - allocated;
+  return {
+    takeHome,
+    pf,
+    tax,
+    ssip,
+    earned,
+    spent,
+    fdInvested,
+    fdPrincipal,
+    fdMaturity,
+    invested,
+    cash,
+    saved: cash,
+    haveNow,
+    gap,
+    since: INCOME_SINCE,
+  };
+}

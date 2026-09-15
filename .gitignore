@@ -5,3 +5,4 @@ supabase/.temp
 node_modules
 *.numbers
 dates/
+salary_info.txt

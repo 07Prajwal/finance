@@ -33,6 +33,9 @@ import {
   sumAmounts,
   uniquePlatforms,
   validateCalcInputs,
+  suggestedSalaryDate,
+  moneyPicture,
+  INCOME_SINCE,
   xirr,
   yearlyByMonth,
 } from "./finance.js";
@@ -437,5 +440,30 @@ describe("XIRR", () => {
     ]);
     assert.deepEqual(dates.buyDates, ["2024-08-14", "2024-10-09"]);
     assert.deepEqual(dates.sellDates, ["2025-01-02"]);
+  });
+});
+
+describe("income picture", () => {
+  it("suggests the 24th of this month on or after the 24th", () => {
+    assert.equal(suggestedSalaryDate(new Date(2026, 8, 24)), "2026-09-24");
+    assert.equal(suggestedSalaryDate(new Date(2026, 8, 15)), "2026-08-24");
+  });
+  it("splits earned into invested, saved cash, spent, and PF", () => {
+    const pic = moneyPicture({
+      expenses: [{ amount: 10000 }],
+      income: [{ amount: 80000, pf: 5000 }],
+      fds: [{ invested: 120000, principal: 131047, maturity_amount: 141784.4 }],
+      accounts: [{ balance: 40000 }],
+      portfolioCost: 200000,
+      portfolioMarket: 220000,
+    });
+    assert.equal(pic.since, INCOME_SINCE);
+    close(pic.takeHome, 80000, 0.01);
+    close(pic.pf, 5000, 0.01);
+    close(pic.earned, 80000, 0.01);
+    close(pic.spent, 10000, 0.01);
+    close(pic.invested, 320000, 0.01);
+    close(pic.cash, 40000, 0.01);
+    close(pic.haveNow, 40000 + 220000 + 131047, 0.01);
   });
 });

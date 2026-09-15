@@ -48,12 +48,25 @@ function requireTradeDate(body) {
   return d;
 }
 
+async function maybeRows(query) {
+  const r = await query;
+  if (r.error) {
+    const msg = String(r.error.message || "");
+    if (/does not exist|schema cache|could not find the table/i.test(msg)) return [];
+    throw r.error;
+  }
+  return r.data || [];
+}
+
 async function listAll(client) {
-  const [exp, hold, fxRow, trades] = await Promise.all([
+  const [exp, hold, fxRow, trades, accounts, income, fds] = await Promise.all([
     client.from("expenses").select("*").order("date", { ascending: false }),
     client.from("holdings").select("*"),
     client.from("settings").select("value").eq("key", "fx").maybeSingle(),
     client.from("trades").select("id, holding_id, side, qty, price, date, cost_inr, proceeds_inr, realised"),
+    maybeRows(client.from("accounts").select("*").order("name")),
+    maybeRows(client.from("income").select("*").order("date", { ascending: false })),
+    maybeRows(client.from("fds").select("*").order("maturity_date")),
   ]);
   for (const r of [exp, hold, fxRow, trades]) {
     if (r.error) throw r.error;
@@ -71,7 +84,13 @@ async function listAll(client) {
     else if (row.sleeve === "foreign") foreign.push(h);
     else indian.push(h);
   }
-  return { expenses: exp.data || [], portfolio: { fx, realised, indian, mf, foreign, trades: trades.data || [] } };
+  return {
+    expenses: exp.data || [],
+    portfolio: { fx, realised, indian, mf, foreign, trades: trades.data || [] },
+    accounts,
+    income,
+    fds,
+  };
 }
 
 async function fxOf(client) {
@@ -326,6 +345,130 @@ Deno.serve(async (req) => {
         const { error } = await client.from("settings").upsert({ key: "fx", value: body.fx });
         if (error) throw error;
       }
+      return json(await listAll(client));
+    }
+
+    if (op === "upsertAccount") {
+      const a = body.account;
+      if (!a?.id || !String(a.name || "").trim()) return json({ error: "Account name is required" }, 400);
+      const { error } = await client.from("accounts").upsert({
+        id: a.id,
+        name: String(a.name).trim(),
+        balance: Number(a.balance) || 0,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      return json(await listAll(client));
+    }
+    if (op === "deleteAccount") {
+      if (!body.id) return json({ error: "Missing id" }, 400);
+      const { error } = await client.from("accounts").delete().eq("id", body.id);
+      if (error) throw error;
+      return json(await listAll(client));
+    }
+    if (op === "addIncome") {
+      const row = body.income;
+      const date = String(row?.date || "").slice(0, 10);
+      if (!row?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Pick the salary date" }, 400);
+      const amt = Number(row.amount) || 0;
+      const pf = Number(row.pf) || 0;
+      const tax = Number(row.tax) || 0;
+      const ssip = Number(row.ssip) || 0;
+      if (!(amt > 0) && !(pf > 0)) return json({ error: "Enter take-home or PF" }, 400);
+      if (pf < 0 || tax < 0 || ssip < 0) return json({ error: "PF, tax, and SSIP cannot be negative" }, 400);
+      const { error } = await client.from("income").insert({
+        id: row.id,
+        date,
+        amount: amt,
+        pf,
+        tax,
+        ssip,
+        notes: row.notes || "",
+      });
+      if (error) throw error;
+      return json(await listAll(client));
+    }
+    if (op === "replaceMoney") {
+      const pay = Array.isArray(body.income) ? body.income : null;
+      const acc = Array.isArray(body.accounts) ? body.accounts : null;
+      const deposits = Array.isArray(body.fds) ? body.fds : null;
+      if (pay) {
+        const { error: d1 } = await client.from("income").delete().gte("date", "1900-01-01");
+        if (d1) throw d1;
+        if (pay.length) {
+          const { error } = await client.from("income").insert(pay.map((row) => ({
+            id: row.id,
+            date: String(row.date).slice(0, 10),
+            amount: Number(row.amount) || 0,
+            pf: Number(row.pf) || 0,
+            tax: Number(row.tax) || 0,
+            ssip: Number(row.ssip) || 0,
+            notes: row.notes || "",
+          })));
+          if (error) throw error;
+        }
+      }
+      if (acc) {
+        const { error: d2 } = await client.from("accounts").delete().neq("id", "");
+        if (d2) throw d2;
+        if (acc.length) {
+          const { error } = await client.from("accounts").insert(acc.map((a) => ({
+            id: a.id,
+            name: String(a.name).trim(),
+            balance: Number(a.balance) || 0,
+            updated_at: new Date().toISOString(),
+          })));
+          if (error) throw error;
+        }
+      }
+      if (deposits) {
+        const { error: d3 } = await client.from("fds").delete().neq("id", "");
+        if (d3) throw d3;
+        if (deposits.length) {
+          const { error } = await client.from("fds").insert(deposits.map((f) => ({
+            id: f.id,
+            bank: String(f.bank).trim(),
+            invested: Number(f.invested) || 0,
+            principal: Number(f.principal) || 0,
+            roi: Number(f.roi) || 0,
+            years: Number(f.years) || 0,
+            maturity_date: f.maturity_date || null,
+            auto_renew: !!f.auto_renew,
+            maturity_amount: Number(f.maturity_amount) || 0,
+          })));
+          if (error) throw error;
+        }
+      }
+      return json(await listAll(client));
+    }
+    if (op === "deleteIncome") {
+      if (!body.id) return json({ error: "Missing id" }, 400);
+      const { error } = await client.from("income").delete().eq("id", body.id);
+      if (error) throw error;
+      return json(await listAll(client));
+    }
+    if (op === "upsertFd") {
+      const f = body.fd;
+      if (!f?.id || !String(f.bank || "").trim()) return json({ error: "Bank name is required" }, 400);
+      if (!(Number(f.invested) > 0)) return json({ error: "Invested amount must be greater than 0" }, 400);
+      const { error } = await client.from("fds").upsert({
+        id: f.id,
+        bank: String(f.bank).trim(),
+        invested: Number(f.invested) || 0,
+        principal: Number(f.principal) || 0,
+        roi: Number(f.roi) || 0,
+        years: Number(f.years) || 0,
+        maturity_date: f.maturity_date || null,
+        auto_renew: !!f.auto_renew,
+        maturity_amount: Number(f.maturity_amount) || 0,
+      });
+      if (error) throw error;
+      return json(await listAll(client));
+    }
+    if (op === "deleteFd") {
+      if (!body.id) return json({ error: "Missing id" }, 400);
+      const { error } = await client.from("fds").delete().eq("id", body.id);
+      if (error) throw error;
       return json(await listAll(client));
     }
 

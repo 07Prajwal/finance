@@ -24,7 +24,7 @@ python3 -m http.server 8080
 ### 2. Supabase
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. SQL editor: run `supabase/schema.sql`, then `supabase/seed.sql` (or `npm run seed:sql` to regenerate the seed from `js/seed.js`).
+2. SQL editor: run `supabase/schema.sql`, then `supabase/migrate_income.sql` (if this is an existing project), then `supabase/seed.sql` if you use it.
 3. Edge Functions secrets (Project Settings → Edge Functions, or CLI):
 
 ```bash

@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=15";
+import * as Finance from "./finance.js?v=17";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -20,6 +20,9 @@ const WIZARD_STEPS = ["date", "amount", "type", "category", "account", "notes", 
 const charts = {};
 let session = null;
 let expenses = [];
+let accounts = [];
+let income = [];
+let fds = [];
 let portfolio = structuredClone(SEED_PORTFOLIO);
 let activityFilter = { month: "", type: "", category: "", account: "", notes: "" };
 let activityViewAll = false;
@@ -39,6 +42,7 @@ let calcState = { monthly: 10000, rate: 12, years: 10, step: 10, lump: 100000, l
 let calcTimer = 0;
 let wizard = null;
 let tradeForm = null;
+let moneyForm = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -109,20 +113,35 @@ function loadLocalData() {
       return {
         expenses: structuredClone(SEED_EXPENSES),
         portfolio: structuredClone(SEED_PORTFOLIO),
+        accounts: [],
+        income: [],
+        fds: [],
       };
     }
     const data = JSON.parse(raw);
     if (!data.portfolio?.realised && data.portfolio) data.portfolio.realised = 0;
+    if (!Array.isArray(data.accounts)) data.accounts = [];
+    if (!Array.isArray(data.income)) data.income = [];
+    if (!Array.isArray(data.fds)) data.fds = [];
     return data;
   } catch {
     return {
       expenses: structuredClone(SEED_EXPENSES),
       portfolio: structuredClone(SEED_PORTFOLIO),
+      accounts: [],
+      income: [],
+      fds: [],
     };
   }
 }
 function saveLocalData(data) {
-  localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(data));
+  localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify({
+    expenses: data.expenses,
+    portfolio: data.portfolio,
+    accounts: data.accounts || [],
+    income: data.income || [],
+    fds: data.fds || [],
+  }));
 }
 
 function findHolding(id) {
@@ -137,10 +156,13 @@ async function localApi(op, payload = {}) {
   const data = loadLocalData();
   expenses = data.expenses;
   portfolio = data.portfolio;
+  accounts = data.accounts || [];
+  income = data.income || [];
+  fds = data.fds || [];
   if (!portfolio.realised) portfolio.realised = 0;
   if (!Array.isArray(portfolio.trades)) portfolio.trades = [];
 
-  if (op === "listAll") return { expenses, portfolio };
+  if (op === "listAll") return { expenses, portfolio, accounts, income, fds };
 
   if (session?.role !== "owner") throw new Error("View only — owner password required to change data");
 
@@ -209,11 +231,61 @@ async function localApi(op, payload = {}) {
     portfolio.foreign = portfolio.foreign.map(apply);
     if (payload.fx?.USDINR) portfolio.fx.USDINR = payload.fx.USDINR;
     if (payload.fx?.EURINR) portfolio.fx.EURINR = payload.fx.EURINR;
+  } else if (op === "upsertAccount") {
+    const a = payload.account;
+    if (!a?.id || !String(a.name || "").trim()) throw new Error("Account name is required");
+    const next = { id: a.id, name: String(a.name).trim(), balance: Number(a.balance) || 0 };
+    const i = accounts.findIndex((x) => x.id === a.id);
+    if (i >= 0) accounts[i] = next;
+    else accounts.push(next);
+  } else if (op === "deleteAccount") {
+    accounts = accounts.filter((x) => x.id !== payload.id);
+  } else if (op === "addIncome") {
+    const row = payload.income;
+    const date = String(row?.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the salary date");
+    const amt = Number(row.amount) || 0;
+    const pf = Number(row.pf) || 0;
+    const tax = Number(row.tax) || 0;
+    const ssip = Number(row.ssip) || 0;
+    if (!(amt > 0) && !(pf > 0)) throw new Error("Enter take-home or PF");
+    if (pf < 0 || tax < 0 || ssip < 0) throw new Error("PF, tax, and SSIP cannot be negative");
+    income.unshift({
+      id: row.id,
+      date,
+      amount: amt,
+      pf,
+      tax,
+      ssip,
+      notes: row.notes || "",
+    });
+  } else if (op === "deleteIncome") {
+    income = income.filter((x) => x.id !== payload.id);
+  } else if (op === "upsertFd") {
+    const f = payload.fd;
+    if (!f?.id || !String(f.bank || "").trim()) throw new Error("Bank name is required");
+    if (!(Number(f.invested) > 0)) throw new Error("Invested amount must be greater than 0");
+    const next = {
+      id: f.id,
+      bank: String(f.bank).trim(),
+      invested: Number(f.invested) || 0,
+      principal: Number(f.principal) || 0,
+      roi: Number(f.roi) || 0,
+      years: Number(f.years) || 0,
+      maturity_date: f.maturity_date || "",
+      auto_renew: !!f.auto_renew,
+      maturity_amount: Number(f.maturity_amount) || 0,
+    };
+    const i = fds.findIndex((x) => x.id === f.id);
+    if (i >= 0) fds[i] = next;
+    else fds.push(next);
+  } else if (op === "deleteFd") {
+    fds = fds.filter((x) => x.id !== payload.id);
   } else {
     throw new Error("Unknown operation");
   }
-  saveLocalData({ expenses, portfolio });
-  return { expenses, portfolio };
+  saveLocalData({ expenses, portfolio, accounts, income, fds });
+  return { expenses, portfolio, accounts, income, fds };
 }
 
 async function remoteApi(op, payload = {}) {
@@ -245,6 +317,9 @@ async function api(op, payload) {
   const data = isRemoteConfigured() ? await remoteApi(op, payload) : await localApi(op, payload);
   if (data.expenses) expenses = normalizeExpenses(data.expenses);
   if (data.portfolio) portfolio = data.portfolio;
+  if (data.accounts) accounts = data.accounts;
+  if (data.income) income = data.income;
+  if (data.fds) fds = data.fds;
   return data;
 }
 
@@ -397,6 +472,7 @@ function showPage() {
   try {
     if (id === "home") renderHome();
     if (id === "expenses") renderExpenses();
+    if (id === "income") renderIncome();
     if (id === "portfolio") renderPortfolio();
     if (id === "calculators") renderCalc();
   } catch (err) {
@@ -528,9 +604,37 @@ function metricHTML(items) {
 function renderHome() {
   const s = Finance.spendStats(expenses);
   const p = Finance.enrichPortfolio(portfolio);
+  const m = Finance.moneyPicture({
+    expenses,
+    income,
+    fds,
+    accounts,
+    portfolioCost: p.total.cost,
+    portfolioMarket: p.total.market,
+  });
+  $("home-have-metrics").innerHTML = metricHTML([
+    { label: "In accounts", value: rupee(m.cash) },
+    { label: "Portfolio", value: rupee(p.total.market) },
+    { label: "Fixed deposits", value: rupee(m.fdPrincipal) },
+    { label: "Total now", value: rupee(m.haveNow), delta: "Cash + stocks + FDs" },
+    { label: "Provident fund", value: rupee(m.pf), delta: "Not in portfolio" },
+  ]);
+  $("home-flow-metrics").innerHTML = metricHTML([
+    { label: "Earned", value: rupee(m.earned), delta: "In-hand since Oct 2022" },
+    { label: "Invested", value: rupee(m.invested), delta: "Stocks, funds, FD principal in" },
+    { label: "Saved", value: rupee(m.saved), delta: "In bank accounts now" },
+    { label: "Spent", value: rupee(m.spent), delta: "Logged expenses" },
+    { label: "Untracked", value: rupee(m.gap), tone: cls(m.gap) },
+  ]);
+  const note = $("home-flow-note");
+  if (note) {
+    note.textContent = m.earned
+      ? `Earned − invested − saved − PF − spent = ${rupee(m.gap, 2)}. Untracked is anything not in those buckets yet.`
+      : "Add salary on the Income page. Each payday is better than one running total.";
+  }
   $("home-invest-metrics").innerHTML = metricHTML([
-    { label: "Current value", value: rupee(p.total.market), delta: `Day ${rupee(p.total.day)}`, tone: cls(p.total.day) },
-    { label: "Invested", value: rupee(p.total.cost) },
+    { label: "Current value", value: rupee(p.total.market + m.fdPrincipal), delta: `Stocks ${rupee(p.total.market)} · FD ${rupee(m.fdPrincipal)}`, tone: cls(p.total.day) },
+    { label: "Invested", value: rupee(m.invested) },
     { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.cost ? p.total.gain / p.total.cost : 0), tone: cls(p.total.gain) },
     { label: "Realised P/L", value: rupee(p.realised, 2), tone: cls(p.realised) },
     { label: "Day change", value: rupee(p.total.day), tone: cls(p.total.day) },
@@ -539,9 +643,86 @@ function renderHome() {
     { label: "This month", value: rupee(s.monthTotal), delta: `${s.count} logs in ${s.month}` },
     { label: "Year to date", value: rupee(s.yearTotal) },
   ]);
-  doughnut("home-alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks"], [p.i.market, p.m.market, p.f.market]);
+  doughnut("home-alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks", "Fixed deposits"], [p.i.market, p.m.market, p.f.market, m.fdPrincipal]);
   const cats = Object.keys(s.byCat);
   doughnut("home-spend-chart", cats.length ? cats : ["No spend yet"], cats.length ? cats.map((c) => s.byCat[c]) : [1]);
+}
+
+function renderIncome() {
+  const p = Finance.enrichPortfolio(portfolio);
+  const m = Finance.moneyPicture({
+    expenses,
+    income,
+    fds,
+    accounts,
+    portfolioCost: p.total.cost,
+    portfolioMarket: p.total.market,
+  });
+  $("income-metrics").innerHTML = metricHTML([
+    { label: "Take-home", value: rupee(m.takeHome) },
+    { label: "PF", value: rupee(m.pf), delta: "Kept off portfolio" },
+    { label: "SSIP", value: rupee(m.ssip), delta: "Nokia stock from salary" },
+    { label: "In accounts", value: rupee(m.cash) },
+    { label: "Earned", value: rupee(m.earned), delta: "In-hand" },
+  ]);
+  const accRows = [...accounts].sort((a, b) => String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" }));
+  $("account-rows").innerHTML = accRows.length ? accRows.map((a) => `
+    <tr>
+      <td>${esc(a.name)}</td>
+      <td class="num">${rupee(a.balance, 2)}</td>
+      <td class="owner-only actions-cell">
+        <button class="icon-btn buy" type="button" data-edit-account="${esc(a.id)}">Edit</button>
+        <button class="icon-btn" type="button" data-del-account="${esc(a.id)}" aria-label="Delete account">${trashSvg()}</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="3" class="tiny">Add each bank account and its current balance.</td></tr>`;
+  $("account-foot").innerHTML = accRows.length ? `<tr><td>Total</td><td class="num">${rupee(m.cash, 2)}</td><td class="owner-only"></td></tr>` : "";
+
+  const pay = [...income].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  $("income-rows").innerHTML = pay.length ? pay.map((r) => `
+    <tr>
+      <td>${esc(fmtDate(r.date))}</td>
+      <td class="num">${rupee(r.amount, 2)}</td>
+      <td class="num">${rupee(r.pf, 2)}</td>
+      <td class="num">${rupee(r.tax, 2)}</td>
+      <td class="num">${rupee(r.ssip, 2)}</td>
+      <td>${esc(r.notes || "")}</td>
+      <td class="owner-only actions-cell">
+        <button class="icon-btn" type="button" data-del-income="${esc(r.id)}" aria-label="Delete salary">${trashSvg()}</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="7" class="tiny">No paydays yet. Add one (usually the 24th or 25th), or paste your full history and we can import it.</td></tr>`;
+  $("income-foot").innerHTML = pay.length ? `<tr>
+    <td>Total</td>
+    <td class="num">${rupee(m.takeHome, 2)}</td>
+    <td class="num">${rupee(m.pf, 2)}</td>
+    <td class="num">${rupee(m.tax, 2)}</td>
+    <td class="num">${rupee(m.ssip, 2)}</td>
+    <td></td>
+    <td class="owner-only"></td>
+  </tr>` : "";
+
+  $("fd-rows").innerHTML = fds.length ? fds.map((f) => `
+    <tr>
+      <td>${esc(f.bank)}</td>
+      <td class="num">${rupee(f.invested, 2)}</td>
+      <td class="num">${rupee(f.principal, 2)}</td>
+      <td class="num">${NUM.format(f.roi)}</td>
+      <td>${esc(f.years)}</td>
+      <td>${esc(fmtDate(f.maturity_date))}</td>
+      <td>${f.auto_renew ? "Yes" : "No"}</td>
+      <td class="num">${rupee(f.maturity_amount, 2)}</td>
+      <td class="owner-only actions-cell">
+        <button class="icon-btn buy" type="button" data-edit-fd="${esc(f.id)}">Edit</button>
+        <button class="icon-btn" type="button" data-del-fd="${esc(f.id)}" aria-label="Delete FD">${trashSvg()}</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="9" class="tiny">Add FDs here. They count as invested, not as holdings.</td></tr>`;
+  $("fd-foot").innerHTML = fds.length ? `<tr>
+    <td>Total</td>
+    <td class="num">${rupee(m.fdInvested, 2)}</td>
+    <td class="num">${rupee(m.fdPrincipal, 2)}</td>
+    <td></td><td></td><td></td><td></td>
+    <td class="num">${rupee(m.fdMaturity, 2)}</td>
+    <td class="owner-only"></td>
+  </tr>` : "";
 }
 
 function trashSvg() {
@@ -966,6 +1147,7 @@ function closeOverlay() {
   $("modal").innerHTML = "";
   wizard = null;
   tradeForm = null;
+  moneyForm = null;
 }
 
 function choiceButtons(name, options, selected) {
@@ -1107,6 +1289,133 @@ function confirmDeleteExpense(id) {
       <button class="btn danger" type="button" id="dlg-delete" data-id="${esc(id)}">Delete</button>
     </div>
   `);
+}
+
+function openAccountModal(existing) {
+  moneyForm = { kind: "account", id: existing?.id || nid("a") };
+  openOverlay(`
+    <h2>${existing ? "Edit account" : "Add account"}</h2>
+    <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
+      <label class="field">Name<input id="m-name" value="${esc(existing?.name || "")}" placeholder="HDFC salary" /></label>
+      <label class="field">Balance (₹)<input id="m-balance" type="text" inputmode="decimal" value="${existing ? esc(existing.balance) : ""}" /></label>
+    </div>
+    <p class="field-error" id="m-error"></p>
+    <div class="modal-footer">
+      <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
+      <button class="btn" type="button" id="money-save">Save</button>
+    </div>
+  `);
+}
+
+function openIncomeModal() {
+  moneyForm = { kind: "income", id: nid("inc") };
+  openOverlay(`
+    <h2>Add salary</h2>
+    <p class="lead">Take-home that hit the bank, and PF for this payday.</p>
+    <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
+      <label class="field">Date<input type="date" id="m-date" value="${esc(Finance.suggestedSalaryDate())}" /></label>
+      <label class="field">Take-home (₹)<input id="m-amount" type="text" inputmode="decimal" /></label>
+      <label class="field">PF (₹)<input id="m-pf" type="text" inputmode="decimal" value="0" /></label>
+      <label class="field">Tax (₹)<input id="m-tax" type="text" inputmode="decimal" value="0" /></label>
+      <label class="field">SSIP Nokia (₹)<input id="m-ssip" type="text" inputmode="decimal" value="0" /></label>
+      <label class="field">Notes<input id="m-notes" placeholder="Optional" /></label>
+    </div>
+    <p class="tiny" style="margin-top:8px">Date defaults to the 24th. Change it if you were paid on the 25th.</p>
+    <p class="field-error" id="m-error"></p>
+    <div class="modal-footer">
+      <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
+      <button class="btn" type="button" id="money-save">Save salary</button>
+    </div>
+  `);
+}
+
+function openFdModal(existing) {
+  moneyForm = { kind: "fd", id: existing?.id || nid("fd") };
+  const mat = existing?.maturity_date ? String(existing.maturity_date).slice(0, 10) : "";
+  openOverlay(`
+    <h2>${existing ? "Edit FD" : "Add FD"}</h2>
+    <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
+      <label class="field">Bank<input id="m-bank" value="${esc(existing?.bank || "")}" placeholder="HDFC" /></label>
+      <label class="field">Invested (₹)<input id="m-invested" type="text" inputmode="decimal" value="${existing ? esc(existing.invested) : ""}" /></label>
+      <label class="field">Principal (₹)<input id="m-principal" type="text" inputmode="decimal" value="${existing ? esc(existing.principal) : ""}" /></label>
+      <label class="field">ROI %<input id="m-roi" type="text" inputmode="decimal" value="${existing ? esc(existing.roi) : ""}" /></label>
+      <label class="field">Years<input id="m-years" type="text" inputmode="decimal" value="${existing ? esc(existing.years) : ""}" /></label>
+      <label class="field">Maturity date<input type="date" id="m-maturity" value="${esc(mat)}" /></label>
+      <label class="field">Maturity amount (₹)<input id="m-maturity-amt" type="text" inputmode="decimal" value="${existing ? esc(existing.maturity_amount) : ""}" /></label>
+      <label class="field">Auto-renew
+        <select id="m-renew"><option value="no"${existing && !existing.auto_renew ? " selected" : ""}>No</option><option value="yes"${existing?.auto_renew ? " selected" : ""}>Yes</option></select>
+      </label>
+    </div>
+    <p class="field-error" id="m-error"></p>
+    <div class="modal-footer">
+      <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
+      <button class="btn" type="button" id="money-save">Save FD</button>
+    </div>
+  `);
+}
+
+function confirmMoneyDelete(kind, id, lead) {
+  moneyForm = { kind: `del-${kind}`, id };
+  openOverlay(`
+    <h2>Delete this?</h2>
+    <p class="lead">${esc(lead)}</p>
+    <p class="tiny">This cannot be undone.</p>
+    <div class="modal-footer">
+      <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
+      <button class="btn danger" type="button" id="money-delete">Delete</button>
+    </div>
+  `);
+}
+
+async function submitMoney() {
+  const err = $("m-error");
+  if (!moneyForm || !err) return;
+  try {
+    if (moneyForm.kind === "account") {
+      const name = ($("m-name").value || "").trim();
+      const balance = Finance.parseInrInput($("m-balance").value);
+      if (!name) { err.textContent = "Name is required"; return; }
+      if (!(balance >= 0) || Number.isNaN(balance)) { err.textContent = "Balance is not a number"; return; }
+      await api("upsertAccount", { account: { id: moneyForm.id, name, balance } });
+    } else if (moneyForm.kind === "income") {
+      const date = ($("m-date").value || "").trim();
+      const amount = Finance.parseInrInput($("m-amount").value);
+      const pf = Finance.parseInrInput($("m-pf").value || "0") || 0;
+      const tax = Finance.parseInrInput($("m-tax").value || "0") || 0;
+      const ssip = Finance.parseInrInput($("m-ssip").value || "0") || 0;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = "Pick the salary date"; return; }
+      if (!(amount > 0) && !(pf > 0)) { err.textContent = "Enter take-home or PF"; return; }
+      if (pf < 0 || tax < 0 || ssip < 0) { err.textContent = "PF, tax, and SSIP cannot be negative"; return; }
+      await api("addIncome", { income: { id: moneyForm.id, date, amount: amount > 0 ? amount : 0, pf, tax, ssip, notes: ($("m-notes").value || "").trim() } });
+    } else if (moneyForm.kind === "fd") {
+      const bank = ($("m-bank").value || "").trim();
+      const invested = Finance.parseInrInput($("m-invested").value);
+      const principal = Finance.parseInrInput($("m-principal").value || $("m-invested").value);
+      const roi = Number($("m-roi").value);
+      const years = Number($("m-years").value);
+      const maturity_amount = Finance.parseInrInput($("m-maturity-amt").value || "0");
+      if (!bank) { err.textContent = "Bank name is required"; return; }
+      if (!(invested > 0)) { err.textContent = "Invested amount must be greater than 0"; return; }
+      await api("upsertFd", {
+        fd: {
+          id: moneyForm.id,
+          bank,
+          invested,
+          principal: Number.isNaN(principal) ? invested : principal,
+          roi: Number.isFinite(roi) ? roi : 0,
+          years: Number.isFinite(years) ? years : 0,
+          maturity_date: ($("m-maturity").value || "").trim(),
+          auto_renew: $("m-renew").value === "yes",
+          maturity_amount: Number.isNaN(maturity_amount) ? 0 : maturity_amount,
+        },
+      });
+    }
+    closeOverlay();
+    renderIncome();
+    renderHome();
+  } catch (e) {
+    err.textContent = e.message || "Could not save";
+  }
 }
 
 function priceUnit(holding) {
@@ -1321,6 +1630,9 @@ $("pf-platform").addEventListener("change", (e) => {
 
 $("nav-add-expense").addEventListener("click", startExpenseWizard);
 $("add-expense").addEventListener("click", startExpenseWizard);
+$("add-income").addEventListener("click", () => openIncomeModal());
+$("add-account").addEventListener("click", () => openAccountModal());
+$("add-fd").addEventListener("click", () => openFdModal());
 $("new-buy").addEventListener("click", () => openTradeModal("new"));
 $("refresh-quotes").addEventListener("click", refreshQuotes);
 
@@ -1371,6 +1683,39 @@ $("pf-sort-clear").addEventListener("click", () => {
 $("pf-sold-toggle").addEventListener("click", () => {
   pfShowSold = !pfShowSold;
   renderPortfolio();
+});
+
+$("income").addEventListener("click", (e) => {
+  if (!isOwner()) return;
+  const editA = e.target.closest("[data-edit-account]");
+  if (editA) {
+    const row = accounts.find((x) => x.id === editA.dataset.editAccount);
+    if (row) openAccountModal(row);
+    return;
+  }
+  const delA = e.target.closest("[data-del-account]");
+  if (delA) {
+    const row = accounts.find((x) => x.id === delA.dataset.delAccount);
+    confirmMoneyDelete("account", delA.dataset.delAccount, row ? row.name : "Account");
+    return;
+  }
+  const delI = e.target.closest("[data-del-income]");
+  if (delI) {
+    const row = income.find((x) => x.id === delI.dataset.delIncome);
+    confirmMoneyDelete("income", delI.dataset.delIncome, row ? `${fmtDate(row.date)} · ${rupee(row.amount, 2)}` : "Salary");
+    return;
+  }
+  const editF = e.target.closest("[data-edit-fd]");
+  if (editF) {
+    const row = fds.find((x) => x.id === editF.dataset.editFd);
+    if (row) openFdModal(row);
+    return;
+  }
+  const delF = e.target.closest("[data-del-fd]");
+  if (delF) {
+    const row = fds.find((x) => x.id === delF.dataset.delFd);
+    confirmMoneyDelete("fd", delF.dataset.delFd, row ? row.bank : "FD");
+  }
 });
 
 $("expense-rows").addEventListener("click", (e) => {
@@ -1476,6 +1821,23 @@ $("overlay").addEventListener("click", async (e) => {
       renderExpenses();
     } catch (ex) {
       $("wiz-error") && ($("wiz-error").textContent = ex.message);
+    }
+    return;
+  }
+  if (t.id === "money-save") {
+    await submitMoney();
+    return;
+  }
+  if (t.id === "money-delete" && moneyForm) {
+    try {
+      if (moneyForm.kind === "del-account") await api("deleteAccount", { id: moneyForm.id });
+      else if (moneyForm.kind === "del-income") await api("deleteIncome", { id: moneyForm.id });
+      else if (moneyForm.kind === "del-fd") await api("deleteFd", { id: moneyForm.id });
+      closeOverlay();
+      renderIncome();
+      renderHome();
+    } catch (ex) {
+      $("income-status") && ($("income-status").textContent = ex.message);
     }
     return;
   }

@@ -11,7 +11,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=16" />
+  <link rel="stylesheet" href="css/app.css?v=18" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -46,6 +46,7 @@
         <div class="nav-links">
           <a href="#home" data-nav="home">Overview</a>
           <a href="#expenses" data-nav="expenses">Expenses</a>
+          <a href="#income" data-nav="income">Income</a>
           <a href="#portfolio" data-nav="portfolio">Portfolio</a>
           <a href="#calculators" data-nav="calculators">Calculators</a>
           <button class="nav-cta owner-only" type="button" id="nav-add-expense">Log expense</button>
@@ -62,11 +63,20 @@
       <section id="home" class="page active">
         <div class="hero">
           <div class="kicker">Overview</div>
-          <h1>Spending and<br>investments.</h1>
-          <p class="lead">Track spending, watch your portfolio, and run SIP or EMI maths.</p>
+          <h1>Spending, income,<br>investments.</h1>
+          <p class="lead">Track cash, salary, PF, FDs, spending, and the portfolio in one place.</p>
         </div>
         <div class="surface">
           <div class="wrap section overview-grid">
+            <div class="overview-block">
+              <h2>What I have</h2>
+              <div class="metrics" id="home-have-metrics"></div>
+            </div>
+            <div class="overview-block">
+              <h2>Since Oct 2022</h2>
+              <div class="metrics" id="home-flow-metrics"></div>
+              <p class="tiny" id="home-flow-note" style="margin-top:12px"></p>
+            </div>
             <div class="overview-block">
               <h2>Investments</h2>
               <div class="metrics" id="home-invest-metrics"></div>
@@ -82,6 +92,69 @@
                 <h3>This month by category</h3>
                 <div class="chart-box"><canvas id="home-spend-chart"></canvas></div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="income" class="page">
+        <div class="hero">
+          <div class="kicker">Incoming</div>
+          <h1>Salary, cash, PF, FDs.</h1>
+          <p class="lead">Log each payday. Provident fund stays off the portfolio. FDs count as invested.</p>
+        </div>
+        <div class="wrap section" style="padding-top:0">
+          <div class="split">
+            <span class="status" id="income-status"></span>
+            <div class="row-actions">
+              <button class="btn sm owner-only" type="button" id="add-income">Add salary</button>
+              <button class="btn secondary sm owner-only" type="button" id="add-account">Add account</button>
+              <button class="btn secondary sm owner-only" type="button" id="add-fd">Add FD</button>
+            </div>
+          </div>
+          <div class="metrics" id="income-metrics"></div>
+          <div class="card" style="margin:20px 0">
+            <h3>Bank accounts</h3>
+            <p class="tiny" style="margin-bottom:12px">Current balances. Update when you check the apps.</p>
+            <div style="overflow:auto">
+              <table>
+                <thead><tr><th>Account</th><th class="num">Balance</th><th class="owner-only"></th></tr></thead>
+                <tbody id="account-rows"></tbody>
+                <tfoot id="account-foot"></tfoot>
+              </table>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:20px">
+            <h3>Salary</h3>
+            <p class="tiny" style="margin-bottom:12px">Take-home credited to bank, and PF for that payday. Usually the 24th or 25th.</p>
+            <div style="overflow:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th class="num">Take-home</th><th class="num">PF</th><th class="num">Tax</th><th class="num">SSIP</th><th>Notes</th>
+                    <th class="owner-only"></th>
+                  </tr>
+                </thead>
+                <tbody id="income-rows"></tbody>
+                <tfoot id="income-foot"></tfoot>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Fixed deposits</h3>
+            <p class="tiny" style="margin-bottom:12px">Shown under investments, not as stocks.</p>
+            <div style="overflow:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Bank</th><th class="num">Invested</th><th class="num">Principal</th><th class="num">ROI %</th>
+                    <th>Years</th><th>Matures</th><th>Renew</th><th class="num">Maturity</th>
+                    <th class="owner-only"></th>
+                  </tr>
+                </thead>
+                <tbody id="fd-rows"></tbody>
+                <tfoot id="fd-foot"></tfoot>
+              </table>
             </div>
           </div>
         </div>
@@ -253,6 +326,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=15"></script>
+  <script type="module" src="js/app.js?v=17"></script>
 </body>
 </html>
