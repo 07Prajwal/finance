@@ -11,7 +11,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=18" />
+  <link rel="stylesheet" href="css/app.css?v=20" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -46,8 +46,8 @@
         <div class="nav-links">
           <a href="#home" data-nav="home">Overview</a>
           <a href="#expenses" data-nav="expenses">Expenses</a>
-          <a href="#income" data-nav="income">Income</a>
           <a href="#portfolio" data-nav="portfolio">Portfolio</a>
+          <a href="#income" data-nav="income">Income</a>
           <a href="#calculators" data-nav="calculators">Calculators</a>
           <button class="nav-cta owner-only" type="button" id="nav-add-expense">Log expense</button>
         </div>
@@ -60,103 +60,34 @@
     </nav>
 
     <main>
-      <section id="home" class="page active">
-        <div class="hero">
-          <div class="kicker">Overview</div>
-          <h1>Spending, income,<br>investments.</h1>
-          <p class="lead">Track cash, salary, PF, FDs, spending, and the portfolio in one place.</p>
-        </div>
-        <div class="surface">
-          <div class="wrap section overview-grid">
-            <div class="overview-block">
-              <h2>What I have</h2>
-              <div class="metrics" id="home-have-metrics"></div>
-            </div>
-            <div class="overview-block">
-              <h2>Since Oct 2022</h2>
-              <div class="metrics" id="home-flow-metrics"></div>
-              <p class="tiny" id="home-flow-note" style="margin-top:12px"></p>
-            </div>
-            <div class="overview-block">
-              <h2>Investments</h2>
-              <div class="metrics" id="home-invest-metrics"></div>
-              <div class="card" style="margin-top:16px">
-                <h3>Portfolio mix</h3>
-                <div class="chart-box"><canvas id="home-alloc-chart"></canvas></div>
-              </div>
-            </div>
-            <div class="overview-block">
-              <h2>Spending</h2>
-              <div class="metrics metrics-2" id="home-spend-metrics"></div>
-              <div class="card" style="margin-top:16px">
-                <h3>This month by category</h3>
-                <div class="chart-box"><canvas id="home-spend-chart"></canvas></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <section id="home" class="page active overview-page">
+        <div class="wrap overview-wrap">
+          <header class="overview-head">
+            <p class="kicker">Overview</p>
+            <h1>Saved, invested, spent.</h1>
+          </header>
 
-      <section id="income" class="page">
-        <div class="hero">
-          <div class="kicker">Incoming</div>
-          <h1>Salary, cash, PF, FDs.</h1>
-          <p class="lead">Log each payday. Provident fund stays off the portfolio. FDs count as invested.</p>
-        </div>
-        <div class="wrap section" style="padding-top:0">
-          <div class="split">
-            <span class="status" id="income-status"></span>
-            <div class="row-actions">
-              <button class="btn sm owner-only" type="button" id="add-income">Add salary</button>
-              <button class="btn secondary sm owner-only" type="button" id="add-account">Add account</button>
-              <button class="btn secondary sm owner-only" type="button" id="add-fd">Add FD</button>
+          <div class="period-pair" id="home-summary"></div>
+
+          <hr class="overview-rule" />
+
+          <section class="overview-band">
+            <h2>Investments</h2>
+            <div class="band-body">
+              <div class="band-stats" id="home-invest-metrics"></div>
+              <div class="band-chart"><canvas id="home-alloc-chart"></canvas></div>
             </div>
-          </div>
-          <div class="metrics" id="income-metrics"></div>
-          <div class="card" style="margin:20px 0">
-            <h3>Bank accounts</h3>
-            <p class="tiny" style="margin-bottom:12px">Current balances. Update when you check the apps.</p>
-            <div style="overflow:auto">
-              <table>
-                <thead><tr><th>Account</th><th class="num">Balance</th><th class="owner-only"></th></tr></thead>
-                <tbody id="account-rows"></tbody>
-                <tfoot id="account-foot"></tfoot>
-              </table>
+          </section>
+
+          <hr class="overview-rule" />
+
+          <section class="overview-band">
+            <h2>Spending</h2>
+            <div class="band-body">
+              <div class="band-stats band-stats-2" id="home-spend-metrics"></div>
+              <div class="band-chart"><canvas id="home-spend-chart"></canvas></div>
             </div>
-          </div>
-          <div class="card" style="margin-bottom:20px">
-            <h3>Salary</h3>
-            <p class="tiny" style="margin-bottom:12px">Take-home credited to bank, and PF for that payday. Usually the 24th or 25th.</p>
-            <div style="overflow:auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th><th class="num">Take-home</th><th class="num">PF</th><th class="num">Tax</th><th class="num">SSIP</th><th>Notes</th>
-                    <th class="owner-only"></th>
-                  </tr>
-                </thead>
-                <tbody id="income-rows"></tbody>
-                <tfoot id="income-foot"></tfoot>
-              </table>
-            </div>
-          </div>
-          <div class="card">
-            <h3>Fixed deposits</h3>
-            <p class="tiny" style="margin-bottom:12px">Shown under investments, not as stocks.</p>
-            <div style="overflow:auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Bank</th><th class="num">Invested</th><th class="num">Principal</th><th class="num">ROI %</th>
-                    <th>Years</th><th>Matures</th><th>Renew</th><th class="num">Maturity</th>
-                    <th class="owner-only"></th>
-                  </tr>
-                </thead>
-                <tbody id="fd-rows"></tbody>
-                <tfoot id="fd-foot"></tfoot>
-              </table>
-            </div>
-          </div>
+          </section>
         </div>
       </section>
 
@@ -242,7 +173,7 @@
       <section id="portfolio" class="page">
         <div class="hero">
           <div class="kicker">Investments</div>
-          <h1>Indian, mutual, foreign.</h1>
+          <h1>Stocks, funds, FDs.</h1>
           <p class="lead">Live prices when the market feed allows it. Buys and sells update cost, average, and realised gain.</p>
         </div>
         <div class="wrap section" style="padding-top:0">
@@ -251,6 +182,7 @@
             <div class="row-actions">
               <button class="btn sm" id="refresh-quotes" type="button">Update live prices</button>
               <button class="btn secondary sm owner-only" id="new-buy" type="button">New buy</button>
+              <button class="btn secondary sm owner-only" id="add-fd" type="button">Add FD</button>
             </div>
           </div>
           <div class="metrics" id="pf-metrics"></div>
@@ -268,11 +200,12 @@
             <button class="on" data-sleeve="indian" type="button">Indian stocks</button>
             <button data-sleeve="mf" type="button">Mutual funds</button>
             <button data-sleeve="foreign" type="button">Foreign stocks</button>
+            <button data-sleeve="fd" type="button">Fixed deposits</button>
           </div>
           <div class="card">
             <div class="chart-head">
               <h3 id="pf-table-title">Holdings</h3>
-              <div class="row-actions">
+              <div class="row-actions" id="pf-holding-tools">
                 <button type="button" class="btn secondary sm" id="pf-sold-toggle">Sold holdings</button>
                 <select id="pf-platform" aria-label="Filter by platform"></select>
                 <select id="pf-sort" aria-label="Sort holdings"></select>
@@ -287,6 +220,43 @@
               </table>
             </div>
             <p class="tiny" id="pf-table-note" style="margin-top:12px">XIRR skips lots held under a year, so a short spike is not annualized. Today's value is the last cash flow.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="income" class="page">
+        <div class="hero">
+          <div class="kicker">Pay</div>
+          <h1>Salary, PF, tax.</h1>
+          <p class="lead">Each payday’s take-home, provident fund, tax, and Nokia SSIP. PF stays off the portfolio.</p>
+        </div>
+        <div class="wrap section" style="padding-top:0">
+          <div class="split">
+            <span class="status" id="income-status"></span>
+            <div class="row-actions">
+              <button class="btn sm owner-only" type="button" id="add-income">Add salary</button>
+            </div>
+          </div>
+          <div class="metrics" id="income-metrics"></div>
+          <div class="card" style="margin:20px 0">
+            <h3>Provident fund</h3>
+            <p class="tiny" id="income-pf-note">EPF deducted at source. It is not cash in the bank and not a holding.</p>
+          </div>
+          <div class="card">
+            <h3>Salary history</h3>
+            <p class="tiny" style="margin-bottom:12px">Usually the 24th, or the 25th for Oct 2022. Tax and SSIP are per payday when they apply.</p>
+            <div style="overflow:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th class="num">Take-home</th><th class="num">PF</th><th class="num">Tax</th><th class="num">SSIP</th><th>Notes</th>
+                    <th class="owner-only"></th>
+                  </tr>
+                </thead>
+                <tbody id="income-rows"></tbody>
+                <tfoot id="income-foot"></tfoot>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -326,6 +296,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=17"></script>
+  <script type="module" src="js/app.js?v=19"></script>
 </body>
 </html>

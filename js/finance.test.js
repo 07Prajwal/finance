@@ -35,6 +35,10 @@ import {
   validateCalcInputs,
   suggestedSalaryDate,
   moneyPicture,
+  fdSleeve,
+  flowSplit,
+  splitPercents,
+  overviewBuckets,
   INCOME_SINCE,
   xirr,
   yearlyByMonth,
@@ -462,8 +466,82 @@ describe("income picture", () => {
     close(pic.pf, 5000, 0.01);
     close(pic.earned, 80000, 0.01);
     close(pic.spent, 10000, 0.01);
+    close(pic.spentLogged, 10000, 0.01);
     close(pic.invested, 320000, 0.01);
     close(pic.cash, 40000, 0.01);
     close(pic.haveNow, 40000 + 220000 + 131047, 0.01);
+    close(pic.gross, 85000, 0.01);
+  });
+  it("folds leftover take-home into spent instead of an untracked column", () => {
+    const pic = moneyPicture({
+      expenses: [{ amount: 10000 }],
+      income: [{ amount: 500000 }],
+      fds: [{ invested: 120000, principal: 131047 }],
+      accounts: [{ balance: 40000 }],
+      portfolioCost: 200000,
+    });
+    close(pic.spentLogged, 10000, 0.01);
+    close(pic.gap, 130000, 0.01);
+    close(pic.spent, 140000, 0.01);
+    close(pic.saved + pic.invested + pic.spent, 500000, 0.01);
+  });
+  it("overview buckets expose till now and this month as saved, invested, spent", () => {
+    const buckets = overviewBuckets({
+      now: new Date(2026, 8, 15),
+      expenses: [{ amount: 10000, date: "2026-09-02" }],
+      income: [{ amount: 500000, date: "2026-01-24" }, { amount: 80000, date: "2026-08-24" }],
+      accounts: [{ balance: 40000 }],
+      fds: [{ invested: 120000, principal: 131047 }],
+      portfolioCost: 200000,
+      trades: [{ side: "buy", date: "2026-09-10", cost_inr: 5000 }],
+    });
+    close(buckets.till.saved, 40000, 0.01);
+    close(buckets.till.invested, 320000, 0.01);
+    assert.ok(buckets.till.spent > 10000);
+    close(buckets.month.spent, 10000, 0.01);
+    close(buckets.month.invested, 5000, 0.01);
+  });
+  it("FD sleeve uses principal as current value", () => {
+    const fd = fdSleeve([{ invested: 120000, principal: 131047, maturity_amount: 141784.4 }]);
+    close(fd.cost, 120000, 0.01);
+    close(fd.market, 131047, 0.01);
+    close(fd.gain, 11047, 0.01);
+    assert.equal(fd.count, 1);
+  });
+  it("year and month splits leftover take-home against buys and spend", () => {
+    const now = new Date(2026, 8, 15);
+    const split = flowSplit({
+      now,
+      grain: "year",
+      income: [
+        { date: "2026-01-24", amount: 100000 },
+        { date: "2025-12-24", amount: 90000 },
+      ],
+      expenses: [
+        { date: "2026-02-01", amount: 20000 },
+        { date: "2025-02-01", amount: 5000 },
+      ],
+      trades: [
+        { side: "buy", date: "2026-03-01", cost_inr: 30000 },
+        { side: "sell", date: "2026-04-01", cost_inr: 99999 },
+      ],
+    });
+    close(split.earned, 100000, 0.01);
+    close(split.spent, 20000, 0.01);
+    close(split.invested, 30000, 0.01);
+    close(split.have, 50000, 0.01);
+    assert.deepEqual(splitPercents([50, 30, 20]), [50, 30, 20]);
+    const month = flowSplit({
+      now,
+      grain: "month",
+      income: [{ date: "2026-08-24", amount: 80000 }],
+      expenses: [{ date: "2026-09-02", amount: 10000 }],
+      trades: [{ side: "buy", date: "2026-08-01", cost_inr: 40000 }],
+    });
+    close(month.earned, 0, 0.01);
+    close(month.spent, 10000, 0.01);
+    close(month.invested, 0, 0.01);
+    close(month.have, 0, 0.01);
+    assert.equal(month.spentPct, 100);
   });
 });

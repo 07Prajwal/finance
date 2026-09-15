@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=17";
+import * as Finance from "./finance.js?v=19";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -604,78 +604,94 @@ function metricHTML(items) {
 function renderHome() {
   const s = Finance.spendStats(expenses);
   const p = Finance.enrichPortfolio(portfolio);
-  const m = Finance.moneyPicture({
+  const fd = Finance.fdSleeve(fds);
+  const buckets = Finance.overviewBuckets({
     expenses,
     income,
-    fds,
     accounts,
+    fds,
     portfolioCost: p.total.cost,
-    portfolioMarket: p.total.market,
+    trades: p.trades,
+    now: new Date(),
   });
-  $("home-have-metrics").innerHTML = metricHTML([
-    { label: "In accounts", value: rupee(m.cash) },
-    { label: "Portfolio", value: rupee(p.total.market) },
-    { label: "Fixed deposits", value: rupee(m.fdPrincipal) },
-    { label: "Total now", value: rupee(m.haveNow), delta: "Cash + stocks + FDs" },
-    { label: "Provident fund", value: rupee(m.pf), delta: "Not in portfolio" },
-  ]);
-  $("home-flow-metrics").innerHTML = metricHTML([
-    { label: "Earned", value: rupee(m.earned), delta: "In-hand since Oct 2022" },
-    { label: "Invested", value: rupee(m.invested), delta: "Stocks, funds, FD principal in" },
-    { label: "Saved", value: rupee(m.saved), delta: "In bank accounts now" },
-    { label: "Spent", value: rupee(m.spent), delta: "Logged expenses" },
-    { label: "Untracked", value: rupee(m.gap), tone: cls(m.gap) },
-  ]);
-  const note = $("home-flow-note");
-  if (note) {
-    note.textContent = m.earned
-      ? `Earned − invested − saved − PF − spent = ${rupee(m.gap, 2)}. Untracked is anything not in those buckets yet.`
-      : "Add salary on the Income page. Each payday is better than one running total.";
-  }
+  const accRows = [...accounts].sort((a, b) => String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" }));
+  const banks = `<div class="period-banks">
+    ${accRows.map((a) => (
+      isOwner()
+        ? `<button class="btn ghost sm" type="button" data-edit-account="${esc(a.id)}">${esc(a.name)} ${rupee(a.balance, 2)}</button>`
+        : `<span>${esc(a.name)} ${rupee(a.balance, 2)}</span>`
+    )).join("")}
+    <button class="btn ghost sm owner-only" type="button" data-add-account>Add account</button>
+  </div>`;
+  $("home-summary").innerHTML =
+    periodCardHTML("Till now", "Since Oct 2022. Anything not saved or invested is spent.", buckets.till, banks) +
+    periodCardHTML("This month", Finance.monthLabel(Finance.thisMonth()), buckets.month);
+
+  const investedAll = p.total.cost + fd.cost;
+  const investGain = p.total.gain + fd.gain;
   $("home-invest-metrics").innerHTML = metricHTML([
-    { label: "Current value", value: rupee(p.total.market + m.fdPrincipal), delta: `Stocks ${rupee(p.total.market)} · FD ${rupee(m.fdPrincipal)}`, tone: cls(p.total.day) },
-    { label: "Invested", value: rupee(m.invested) },
-    { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.cost ? p.total.gain / p.total.cost : 0), tone: cls(p.total.gain) },
-    { label: "Realised P/L", value: rupee(p.realised, 2), tone: cls(p.realised) },
-    { label: "Day change", value: rupee(p.total.day), tone: cls(p.total.day) },
+    { label: "Current", value: rupee(p.total.market + fd.market), delta: `Stocks ${rupee(p.total.market)} · FD ${rupee(fd.market)}` },
+    { label: "Put in", value: rupee(investedAll) },
+    { label: "Unrealised P/L", value: rupee(investGain), delta: pct(investedAll ? investGain / investedAll : 0), tone: cls(investGain) },
   ]);
   $("home-spend-metrics").innerHTML = metricHTML([
-    { label: "This month", value: rupee(s.monthTotal), delta: `${s.count} logs in ${s.month}` },
+    { label: "This month", value: rupee(s.monthTotal), delta: `${s.count} logs` },
     { label: "Year to date", value: rupee(s.yearTotal) },
   ]);
-  doughnut("home-alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks", "Fixed deposits"], [p.i.market, p.m.market, p.f.market, m.fdPrincipal]);
+  doughnut("home-alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks", "Fixed deposits"], [p.i.market, p.m.market, p.f.market, fd.market]);
   const cats = Object.keys(s.byCat);
   doughnut("home-spend-chart", cats.length ? cats : ["No spend yet"], cats.length ? cats.map((c) => s.byCat[c]) : [1]);
 }
 
+function periodCardHTML(title, note, b, extra = "") {
+  const segs = [
+    { key: "saved", pct: b.savedPct },
+    { key: "invested", pct: b.investedPct },
+    { key: "spent", pct: b.spentPct },
+  ].filter((row) => row.pct > 0);
+  const bar = segs.length
+    ? segs.map((row) => `<span class="seg ${row.key}" style="width:${row.pct}%"></span>`).join("")
+    : "";
+  const stat = (label, amount, pct) => `<div class="period-stat">
+    <span class="label">${label}</span>
+    <span class="value">${rupee(amount)}</span>
+    <span class="pct">${pct}%</span>
+  </div>`;
+  return `<article class="period-card">
+    <h2>${esc(title)}</h2>
+    <p class="period-note">${esc(note)}</p>
+    <div class="period-stats">
+      ${stat("Saved", b.saved, b.savedPct)}
+      ${stat("Invested", b.invested, b.investedPct)}
+      ${stat("Spent", b.spent, b.spentPct)}
+    </div>
+    <div class="split-bar">${bar}</div>
+    ${extra}
+  </article>`;
+}
+
 function renderIncome() {
-  const p = Finance.enrichPortfolio(portfolio);
   const m = Finance.moneyPicture({
     expenses,
     income,
     fds,
     accounts,
-    portfolioCost: p.total.cost,
-    portfolioMarket: p.total.market,
+    portfolioCost: 0,
+    portfolioMarket: 0,
   });
   $("income-metrics").innerHTML = metricHTML([
-    { label: "Take-home", value: rupee(m.takeHome) },
-    { label: "PF", value: rupee(m.pf), delta: "Kept off portfolio" },
+    { label: "Take-home", value: rupee(m.takeHome), delta: "In-hand since Oct 2022" },
+    { label: "Provident fund", value: rupee(m.pf), delta: "Off the portfolio" },
+    { label: "Tax paid", value: rupee(m.tax) },
     { label: "SSIP", value: rupee(m.ssip), delta: "Nokia stock from salary" },
-    { label: "In accounts", value: rupee(m.cash) },
-    { label: "Earned", value: rupee(m.earned), delta: "In-hand" },
+    { label: "Gross logged", value: rupee(m.gross), delta: "Take-home + PF + tax + SSIP" },
   ]);
-  const accRows = [...accounts].sort((a, b) => String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" }));
-  $("account-rows").innerHTML = accRows.length ? accRows.map((a) => `
-    <tr>
-      <td>${esc(a.name)}</td>
-      <td class="num">${rupee(a.balance, 2)}</td>
-      <td class="owner-only actions-cell">
-        <button class="icon-btn buy" type="button" data-edit-account="${esc(a.id)}">Edit</button>
-        <button class="icon-btn" type="button" data-del-account="${esc(a.id)}" aria-label="Delete account">${trashSvg()}</button>
-      </td>
-    </tr>`).join("") : `<tr><td colspan="3" class="tiny">Add each bank account and its current balance.</td></tr>`;
-  $("account-foot").innerHTML = accRows.length ? `<tr><td>Total</td><td class="num">${rupee(m.cash, 2)}</td><td class="owner-only"></td></tr>` : "";
+  const pfNote = $("income-pf-note");
+  if (pfNote) {
+    pfNote.textContent = m.pf
+      ? `EPF deducted at source: ${rupee(m.pf)} across ${income.filter((r) => Number(r.pf) > 0).length} payday${income.filter((r) => Number(r.pf) > 0).length === 1 ? "" : "s"}. Not cash, not a holding.`
+      : "EPF deducted at source. It is not cash in the bank and not a holding.";
+  }
 
   const pay = [...income].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   $("income-rows").innerHTML = pay.length ? pay.map((r) => `
@@ -689,7 +705,7 @@ function renderIncome() {
       <td class="owner-only actions-cell">
         <button class="icon-btn" type="button" data-del-income="${esc(r.id)}" aria-label="Delete salary">${trashSvg()}</button>
       </td>
-    </tr>`).join("") : `<tr><td colspan="7" class="tiny">No paydays yet. Add one (usually the 24th or 25th), or paste your full history and we can import it.</td></tr>`;
+    </tr>`).join("") : `<tr><td colspan="7" class="tiny">No paydays yet. Add one (usually the 24th or 25th).</td></tr>`;
   $("income-foot").innerHTML = pay.length ? `<tr>
     <td>Total</td>
     <td class="num">${rupee(m.takeHome, 2)}</td>
@@ -697,30 +713,6 @@ function renderIncome() {
     <td class="num">${rupee(m.tax, 2)}</td>
     <td class="num">${rupee(m.ssip, 2)}</td>
     <td></td>
-    <td class="owner-only"></td>
-  </tr>` : "";
-
-  $("fd-rows").innerHTML = fds.length ? fds.map((f) => `
-    <tr>
-      <td>${esc(f.bank)}</td>
-      <td class="num">${rupee(f.invested, 2)}</td>
-      <td class="num">${rupee(f.principal, 2)}</td>
-      <td class="num">${NUM.format(f.roi)}</td>
-      <td>${esc(f.years)}</td>
-      <td>${esc(fmtDate(f.maturity_date))}</td>
-      <td>${f.auto_renew ? "Yes" : "No"}</td>
-      <td class="num">${rupee(f.maturity_amount, 2)}</td>
-      <td class="owner-only actions-cell">
-        <button class="icon-btn buy" type="button" data-edit-fd="${esc(f.id)}">Edit</button>
-        <button class="icon-btn" type="button" data-del-fd="${esc(f.id)}" aria-label="Delete FD">${trashSvg()}</button>
-      </td>
-    </tr>`).join("") : `<tr><td colspan="9" class="tiny">Add FDs here. They count as invested, not as holdings.</td></tr>`;
-  $("fd-foot").innerHTML = fds.length ? `<tr>
-    <td>Total</td>
-    <td class="num">${rupee(m.fdInvested, 2)}</td>
-    <td class="num">${rupee(m.fdPrincipal, 2)}</td>
-    <td></td><td></td><td></td><td></td>
-    <td class="num">${rupee(m.fdMaturity, 2)}</td>
     <td class="owner-only"></td>
   </tr>` : "";
 }
@@ -860,18 +852,70 @@ function fmtDateRange(dates) {
   return `${fmtDate(uniq[0])} – ${fmtDate(uniq[uniq.length - 1])}`;
 }
 
+function renderFdTable(fd) {
+  const title = $("pf-table-title");
+  if (title) title.textContent = "Fixed deposits";
+  const note = $("pf-table-note");
+  if (note) note.textContent = "Principal is the current FD value. Gain is principal minus what you put in. FDs are not stocks, so no XIRR here.";
+  $("pf-head").innerHTML = `<tr>
+    <th>Bank</th><th class="num">Invested</th><th class="num">Principal</th><th class="num">ROI %</th>
+    <th>Years</th><th>Matures</th><th>Renew</th><th class="num">Maturity</th><th class="num">Gain</th>
+    <th class="owner-only"></th>
+  </tr>`;
+  $("pf-rows").innerHTML = fds.length ? fds.map((f) => {
+    const gain = (Number(f.principal) || 0) - (Number(f.invested) || 0);
+    return `
+    <tr class="${gain < 0 ? "loss" : ""}">
+      <td><strong>${esc(f.bank)}</strong></td>
+      <td class="num">${rupee(f.invested, 2)}</td>
+      <td class="num">${rupee(f.principal, 2)}</td>
+      <td class="num">${NUM.format(f.roi)}</td>
+      <td>${esc(f.years)}</td>
+      <td>${esc(fmtDate(f.maturity_date))}</td>
+      <td>${f.auto_renew ? "Yes" : "No"}</td>
+      <td class="num">${rupee(f.maturity_amount, 2)}</td>
+      <td class="num ${gain >= 0 ? "gain" : "loss"}">${rupee(gain, 2)}</td>
+      <td class="owner-only actions-cell">
+        <button class="icon-btn buy" type="button" data-edit-fd="${esc(f.id)}">Edit</button>
+        <button class="icon-btn" type="button" data-del-fd="${esc(f.id)}" aria-label="Delete FD">${trashSvg()}</button>
+      </td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="10" class="tiny">Add an FD on this tab. It counts as invested, not as a stock.</td></tr>`;
+  $("pf-foot").innerHTML = fds.length ? `<tr>
+    <td>Total</td>
+    <td class="num">${rupee(fd.cost, 2)}</td>
+    <td class="num">${rupee(fd.market, 2)}</td>
+    <td></td><td></td><td></td><td></td>
+    <td class="num">${rupee(fd.maturity, 2)}</td>
+    <td class="num ${fd.gain >= 0 ? "gain" : "loss"}">${rupee(fd.gain, 2)}</td>
+    <td class="owner-only"></td>
+  </tr>` : "";
+}
+
 function renderPortfolio() {
   const p = Finance.enrichPortfolio(portfolio);
+  const fd = Finance.fdSleeve(fds);
+  const current = p.total.market + fd.market;
+  const investedAll = p.total.cost + fd.cost;
+  const gainAll = current - investedAll;
   $("pf-metrics").innerHTML = metricHTML([
-    { label: "Current value", value: rupee(p.total.market), delta: `Day ${rupee(p.total.day)} · ${pct(p.total.market ? p.total.day / (p.total.market - p.total.day) : 0)}`, tone: cls(p.total.day) },
-    { label: "Invested", value: rupee(p.total.cost) },
-    { label: "Unrealised P/L", value: rupee(p.total.gain), delta: pct(p.total.gainPct), tone: cls(p.total.gain) },
-    { label: "Unrealised P/L %", value: pct(p.total.gainPct), tone: cls(p.total.gain) },
+    { label: "Current value", value: rupee(current), delta: `Day ${rupee(p.total.day)} · ${pct(p.total.market ? p.total.day / (p.total.market - p.total.day) : 0)}`, tone: cls(p.total.day) },
+    { label: "Invested", value: rupee(investedAll), delta: `Stocks ${rupee(p.total.cost)} · FD ${rupee(fd.cost)}` },
+    { label: "Unrealised P/L", value: rupee(gainAll), delta: pct(investedAll ? gainAll / investedAll : 0), tone: cls(gainAll) },
+    { label: "Unrealised P/L %", value: pct(investedAll ? gainAll / investedAll : 0), tone: cls(gainAll) },
     { label: "Realised P/L", value: rupee(p.realised, 2), tone: cls(p.realised) },
-    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs 1 year of history" : "True annualized yield" },
+    { label: "XIRR", value: p.total.xirr == null ? "—" : pct(p.total.xirr), delta: p.total.xirr == null ? "Needs 1 year of history" : "Stocks and funds only" },
   ]);
-  doughnut("alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks"], [p.i.market, p.m.market, p.f.market]);
-  bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign"], [p.i.gain, p.m.gain, p.f.gain], chartInk());
+  doughnut("alloc-chart", ["Indian stocks", "Mutual funds", "Foreign stocks", "Fixed deposits"], [p.i.market, p.m.market, p.f.market, fd.market]);
+  bar("sleeve-chart", ["Indian", "Mutual funds", "Foreign", "FD"], [p.i.gain, p.m.gain, p.f.gain, fd.gain], chartInk());
+
+  const isFd = sleeve === "fd";
+  $("new-buy")?.classList.toggle("hidden", isFd);
+  $("pf-holding-tools")?.classList.toggle("hidden", isFd);
+  if (isFd) {
+    renderFdTable(fd);
+    return;
+  }
 
   const map = { indian: p.indian, mf: p.mf, foreign: p.foreign };
   const totals = { indian: p.i, mf: p.m, foreign: p.f };
@@ -1413,6 +1457,7 @@ async function submitMoney() {
     closeOverlay();
     renderIncome();
     renderHome();
+    renderPortfolio();
   } catch (e) {
     err.textContent = e.message || "Could not save";
   }
@@ -1631,7 +1676,6 @@ $("pf-platform").addEventListener("change", (e) => {
 $("nav-add-expense").addEventListener("click", startExpenseWizard);
 $("add-expense").addEventListener("click", startExpenseWizard);
 $("add-income").addEventListener("click", () => openIncomeModal());
-$("add-account").addEventListener("click", () => openAccountModal());
 $("add-fd").addEventListener("click", () => openFdModal());
 $("new-buy").addEventListener("click", () => openTradeModal("new"));
 $("refresh-quotes").addEventListener("click", refreshQuotes);
@@ -1685,7 +1729,11 @@ $("pf-sold-toggle").addEventListener("click", () => {
   renderPortfolio();
 });
 
-$("income").addEventListener("click", (e) => {
+function onMoneyClick(e) {
+  if (e.target.closest("[data-add-account]")) {
+    if (isOwner()) openAccountModal();
+    return;
+  }
   if (!isOwner()) return;
   const editA = e.target.closest("[data-edit-account]");
   if (editA) {
@@ -1716,7 +1764,11 @@ $("income").addEventListener("click", (e) => {
     const row = fds.find((x) => x.id === delF.dataset.delFd);
     confirmMoneyDelete("fd", delF.dataset.delFd, row ? row.bank : "FD");
   }
-});
+}
+
+$("home").addEventListener("click", onMoneyClick);
+$("income").addEventListener("click", onMoneyClick);
+$("portfolio").addEventListener("click", onMoneyClick);
 
 $("expense-rows").addEventListener("click", (e) => {
   const b = e.target.closest("[data-del]");
@@ -1836,6 +1888,7 @@ $("overlay").addEventListener("click", async (e) => {
       closeOverlay();
       renderIncome();
       renderHome();
+      renderPortfolio();
     } catch (ex) {
       $("income-status") && ($("income-status").textContent = ex.message);
     }

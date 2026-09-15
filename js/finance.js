@@ -810,21 +810,24 @@ export function moneyPicture({
   const tax = (income || []).reduce((s, r) => s + (Number(r.tax) || 0), 0);
   const ssip = (income || []).reduce((s, r) => s + (Number(r.ssip) || 0), 0);
   const earned = takeHome;
-  const spent = sumAmounts(expenses);
+  const spentLogged = sumAmounts(expenses);
   const fdInvested = (fds || []).reduce((s, r) => s + (Number(r.invested) || 0), 0);
   const fdPrincipal = (fds || []).reduce((s, r) => s + (Number(r.principal) || 0), 0);
   const fdMaturity = (fds || []).reduce((s, r) => s + (Number(r.maturity_amount) || 0), 0);
   const invested = (Number(portfolioCost) || 0) + fdInvested;
   const cash = (accounts || []).reduce((s, r) => s + (Number(r.balance) || 0), 0);
   const haveNow = cash + (Number(portfolioMarket) || 0) + fdPrincipal;
-  const allocated = spent + invested + cash;
+  const allocated = spentLogged + invested + cash;
   const gap = earned - allocated;
+  const spent = spentLogged + Math.max(0, gap);
   return {
     takeHome,
     pf,
     tax,
     ssip,
+    gross: takeHome + pf + tax + ssip,
     earned,
+    spentLogged,
     spent,
     fdInvested,
     fdPrincipal,
@@ -835,5 +838,118 @@ export function moneyPicture({
     haveNow,
     gap,
     since: INCOME_SINCE,
+  };
+}
+
+export function fdSleeve(fds = []) {
+  const cost = (fds || []).reduce((s, r) => s + (Number(r.invested) || 0), 0);
+  const market = (fds || []).reduce((s, r) => s + (Number(r.principal) || 0), 0);
+  const maturity = (fds || []).reduce((s, r) => s + (Number(r.maturity_amount) || 0), 0);
+  const gain = market - cost;
+  return {
+    cost,
+    market,
+    maturity,
+    gain,
+    gainPct: cost ? gain / cost : 0,
+    day: 0,
+    count: (fds || []).length,
+  };
+}
+
+function dateInGrain(iso, grain, now) {
+  const d = String(iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  if (grain === "month") return monthKey(d) === thisMonth(now);
+  return d.startsWith(String(now.getFullYear()));
+}
+
+/** Round parts so they add to 100 when the total is positive. */
+export function splitPercents(parts) {
+  const nums = (parts || []).map((n) => Math.max(0, Number(n) || 0));
+  const total = nums.reduce((s, n) => s + n, 0);
+  if (!(total > 0)) return nums.map(() => 0);
+  const raw = nums.map((n) => (n / total) * 100);
+  const rounded = raw.map((n) => Math.round(n));
+  let drift = 100 - rounded.reduce((s, n) => s + n, 0);
+  if (rounded.length && drift) {
+    let i = 0;
+    for (let k = 1; k < raw.length; k += 1) if (raw[k] > raw[i]) i = k;
+    rounded[i] += drift;
+  }
+  return rounded;
+}
+
+/**
+ * This year or this month: leftover take-home vs new buys vs logged spend.
+ * Leftover is take-home minus spend minus buy cost. Negative leftover is overshoot, not a "have" slice.
+ */
+export function flowSplit({
+  expenses = [],
+  income = [],
+  trades = [],
+  now = new Date(),
+  grain = "year",
+} = {}) {
+  const earned = (income || [])
+    .filter((r) => dateInGrain(r.date, grain, now))
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const spent = (expenses || [])
+    .filter((e) => dateInGrain(e.date, grain, now))
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const invested = (trades || [])
+    .filter((t) => String(t.side || "").toLowerCase() === "buy" && dateInGrain(t.date, grain, now))
+    .reduce((s, t) => s + (Number(t.cost_inr) || 0), 0);
+  const leftover = earned - spent - invested;
+  const saved = leftover > 0 ? leftover : 0;
+  const [savedPct, investedPct, spentPct] = splitPercents([saved, invested, spent]);
+  return {
+    grain,
+    earned,
+    spentLogged: spent,
+    spent,
+    invested,
+    saved,
+    have: saved,
+    leftover,
+    savedPct,
+    havePct: savedPct,
+    investedPct,
+    spentPct,
+  };
+}
+
+/** Till now and this month: saved, invested, spent. The untracked remainder is inside till-now spent. */
+export function overviewBuckets({
+  expenses = [],
+  income = [],
+  accounts = [],
+  fds = [],
+  portfolioCost = 0,
+  trades = [],
+  now = new Date(),
+} = {}) {
+  const pic = moneyPicture({ expenses, income, fds, accounts, portfolioCost });
+  const month = flowSplit({ expenses, income, trades, now, grain: "month" });
+  const tillPct = splitPercents([pic.saved, pic.invested, pic.spent]);
+  return {
+    till: {
+      saved: pic.saved,
+      invested: pic.invested,
+      spent: pic.spent,
+      savedPct: tillPct[0],
+      investedPct: tillPct[1],
+      spentPct: tillPct[2],
+      earned: pic.earned,
+    },
+    month: {
+      saved: month.saved,
+      invested: month.invested,
+      spent: month.spent,
+      savedPct: month.savedPct,
+      investedPct: month.investedPct,
+      spentPct: month.spentPct,
+      earned: month.earned,
+    },
   };
 }

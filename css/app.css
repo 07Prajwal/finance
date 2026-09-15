@@ -121,14 +121,119 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .section-sub { color: var(--muted); font-size: 17px; margin-bottom: 28px; }
 
-.overview-grid {
+.overview-wrap { width: min(980px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 96px; }
+.overview-head { margin-bottom: 36px; }
+.overview-head .kicker { margin-bottom: 8px; }
+.overview-head h1 {
+  font-size: clamp(32px, 5vw, 44px);
+  line-height: 1.12;
+  letter-spacing: -0.45px;
+  font-weight: 700;
+}
+.period-pair {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 32px;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
 }
-.overview-block h2 {
-  font-size: 28px; margin-bottom: 16px;
+.period-card {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 28px 28px 26px;
 }
+.period-card h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  text-transform: none;
+  margin-bottom: 4px;
+}
+.period-card .period-note { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+.period-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.period-stat .label { font-size: 12px; color: var(--muted); }
+.period-stat .value {
+  display: block;
+  margin-top: 6px;
+  font-size: clamp(18px, 2.2vw, 26px);
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.period-stat .pct { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.period-card .split-bar { height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.period-card .split-bar .seg { font-size: 0; }
+.period-banks {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  margin-top: 16px; font-size: 13px; color: var(--muted);
+}
+.period-banks button { font-size: 13px; }
+.overview-rule {
+  border: 0;
+  height: 1px;
+  background: var(--border);
+  margin: 52px 0;
+}
+.overview-band h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  margin-bottom: 24px;
+}
+.band-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 36px;
+  align-items: center;
+}
+.band-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.band-stats.band-stats-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 480px; }
+.band-stats .metric {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.band-stats .metric .value { font-size: 28px; }
+.band-chart { position: relative; height: 220px; }
+.band-chart canvas { display: block; }
+
+.split-bar .seg.saved { background: var(--gain); }
+.split-legend i.saved { background: var(--gain); }
+.split-bar {
+  display: flex;
+  height: 28px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.split-bar .seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: #fff;
+  min-width: 0;
+}
+.split-bar .seg.have { background: var(--gain); }
+.split-bar .seg.invested { background: var(--primary); }
+.split-bar .seg.spent { background: #6E6E73; }
+.split-legend {
+  display: flex; flex-wrap: wrap; gap: 12px 16px;
+  margin-top: 12px; font-size: 13px; color: var(--muted);
+}
+.split-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.split-legend i {
+  width: 8px; height: 8px; border-radius: 2px; display: inline-block;
+}
+.split-legend i.have { background: var(--gain); }
+.split-legend i.invested { background: var(--primary); }
+.split-legend i.spent { background: #6E6E73; }
 
 .metrics {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
@@ -136,7 +241,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .metrics.metrics-2 { grid-template-columns: repeat(2, 1fr); }
 .metrics.metrics-5 { grid-template-columns: repeat(5, 1fr); }
-#home-have-metrics, #home-flow-metrics, #income-metrics { grid-template-columns: repeat(5, 1fr); }
+#income-metrics { grid-template-columns: repeat(5, 1fr); }
 #pf-metrics { grid-template-columns: repeat(6, 1fr); }
 .metric {
   background: var(--surface); border-radius: var(--radius); padding: 20px 16px;
@@ -378,7 +483,10 @@ body.is-owner td.owner-only, body.is-owner th.owner-only { display: table-cell !
 }
 
 @media (max-width: 900px) {
-  .metrics, .metrics.metrics-2, .metrics.metrics-5, #pf-metrics, #home-have-metrics, #home-flow-metrics, #income-metrics, .grid-2, .grid-3, .fields, .calc-layout { grid-template-columns: 1fr; }
+  .metrics, .metrics.metrics-2, .metrics.metrics-5, #pf-metrics, #income-metrics, .grid-2, .grid-3, .fields, .calc-layout, .period-pair, .band-body, .period-stats, .band-stats { grid-template-columns: 1fr; }
+  .overview-wrap { width: min(1120px, calc(100% - 32px)); padding: 28px 0 64px; }
+  .overview-rule { margin: 36px 0; }
+  .band-chart { height: 200px; width: min(260px, 100%); }
   .chart-with-legend { flex-direction: column; align-items: stretch; }
   .chart-legend { max-height: none; }
   .hero { padding-top: 48px; }
