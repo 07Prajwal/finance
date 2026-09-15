@@ -452,54 +452,75 @@ describe("income picture", () => {
     assert.equal(suggestedSalaryDate(new Date(2026, 8, 24)), "2026-09-24");
     assert.equal(suggestedSalaryDate(new Date(2026, 8, 15)), "2026-08-24");
   });
-  it("splits earned into invested, saved cash, spent, and PF", () => {
+  it("splits incoming into current balance, invested, and spent", () => {
     const pic = moneyPicture({
       expenses: [{ amount: 10000 }],
       income: [{ amount: 80000, pf: 5000 }],
       fds: [{ invested: 120000, principal: 131047, maturity_amount: 141784.4 }],
-      accounts: [{ balance: 40000 }],
       portfolioCost: 200000,
       portfolioMarket: 220000,
+      realised: 0,
     });
     assert.equal(pic.since, INCOME_SINCE);
     close(pic.takeHome, 80000, 0.01);
-    close(pic.pf, 5000, 0.01);
+    close(pic.pfEmployee, 5000, 0.01);
+    close(pic.pf, 10000, 0.01);
     close(pic.earned, 80000, 0.01);
     close(pic.spent, 10000, 0.01);
-    close(pic.spentLogged, 10000, 0.01);
     close(pic.invested, 320000, 0.01);
-    close(pic.cash, 40000, 0.01);
-    close(pic.haveNow, 40000 + 220000 + 131047, 0.01);
-    close(pic.gross, 85000, 0.01);
+    close(pic.saved, 80000 - 10000 - 320000, 0.01);
+    close(pic.haveNow, pic.saved + 220000 + 131047, 0.01);
   });
-  it("folds leftover take-home into spent instead of an untracked column", () => {
+  it("counts employer PF equal to the employee amount", () => {
+    const pic = moneyPicture({ income: [{ amount: 80000, pf: 4946 }] });
+    close(pic.pfEmployee, 4946, 0.01);
+    close(pic.pf, 9892, 0.01);
+  });
+  it("adds dividends to incoming and current balance", () => {
     const pic = moneyPicture({
       expenses: [{ amount: 10000 }],
-      income: [{ amount: 500000 }],
-      fds: [{ invested: 120000, principal: 131047 }],
-      accounts: [{ balance: 40000 }],
-      portfolioCost: 200000,
+      income: [
+        { amount: 80000, kind: "salary" },
+        { amount: 5000, kind: "dividend" },
+      ],
+      fds: [{ invested: 20000, principal: 21000 }],
+      portfolioCost: 30000,
+      realised: 2000,
     });
-    close(pic.spentLogged, 10000, 0.01);
-    close(pic.gap, 130000, 0.01);
-    close(pic.spent, 140000, 0.01);
-    close(pic.saved + pic.invested + pic.spent, 500000, 0.01);
+    close(pic.incoming, 85000, 0.01);
+    close(pic.dividends, 5000, 0.01);
+    close(pic.invested, 50000, 0.01);
+    close(pic.spent, 10000, 0.01);
+    close(pic.saved, 85000 - 10000 - 50000 + 2000, 0.01);
   });
-  it("overview buckets expose till now and this month as saved, invested, spent", () => {
+  it("raises current balance when an expense is removed", () => {
+    const withExp = moneyPicture({
+      expenses: [{ amount: 10000 }],
+      income: [{ amount: 80000 }],
+      portfolioCost: 20000,
+    });
+    const withoutExp = moneyPicture({
+      expenses: [],
+      income: [{ amount: 80000 }],
+      portfolioCost: 20000,
+    });
+    close(withoutExp.saved - withExp.saved, 10000, 0.01);
+  });
+  it("overview buckets expose till now and this month", () => {
     const buckets = overviewBuckets({
       now: new Date(2026, 8, 15),
       expenses: [{ amount: 10000, date: "2026-09-02" }],
       income: [{ amount: 500000, date: "2026-01-24" }, { amount: 80000, date: "2026-08-24" }],
-      accounts: [{ balance: 40000 }],
       fds: [{ invested: 120000, principal: 131047 }],
       portfolioCost: 200000,
       trades: [{ side: "buy", date: "2026-09-10", cost_inr: 5000 }],
     });
-    close(buckets.till.saved, 40000, 0.01);
     close(buckets.till.invested, 320000, 0.01);
-    assert.ok(buckets.till.spent > 10000);
+    close(buckets.till.spent, 10000, 0.01);
+    close(buckets.till.primary, 580000 - 10000 - 320000, 0.01);
     close(buckets.month.spent, 10000, 0.01);
     close(buckets.month.invested, 5000, 0.01);
+    close(buckets.month.primary, 0, 0.01);
   });
   it("FD sleeve uses principal as current value", () => {
     const fd = fdSleeve([{ invested: 120000, principal: 131047, maturity_amount: 141784.4 }]);

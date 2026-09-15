@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=19";
+import * as Finance from "./finance.js?v=20";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -243,13 +243,16 @@ async function localApi(op, payload = {}) {
   } else if (op === "addIncome") {
     const row = payload.income;
     const date = String(row?.date || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the salary date");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the date");
     const amt = Number(row.amount) || 0;
-    const pf = Number(row.pf) || 0;
-    const tax = Number(row.tax) || 0;
+    const kind = String(row.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary";
+    const pf = kind === "dividend" ? 0 : Number(row.pf) || 0;
+    const tax = kind === "dividend" ? 0 : Number(row.tax) || 0;
     const ssip = Number(row.ssip) || 0;
-    if (!(amt > 0) && !(pf > 0)) throw new Error("Enter take-home or PF");
-    if (pf < 0 || tax < 0 || ssip < 0) throw new Error("PF, tax, and SSIP cannot be negative");
+    if (kind === "dividend") {
+      if (!(amt > 0)) throw new Error("Enter the dividend amount");
+    } else if (!(amt > 0) && !(pf > 0)) throw new Error("Enter take-home or PF");
+    if (pf < 0 || tax < 0 || ssip < 0) throw new Error("PF and tax cannot be negative");
     income.unshift({
       id: row.id,
       date,
@@ -258,6 +261,7 @@ async function localApi(op, payload = {}) {
       tax,
       ssip,
       notes: row.notes || "",
+      kind,
     });
   } else if (op === "deleteIncome") {
     income = income.filter((x) => x.id !== payload.id);
@@ -608,30 +612,21 @@ function renderHome() {
   const buckets = Finance.overviewBuckets({
     expenses,
     income,
-    accounts,
     fds,
     portfolioCost: p.total.cost,
     trades: p.trades,
+    realised: p.realised,
     now: new Date(),
   });
-  const accRows = [...accounts].sort((a, b) => String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" }));
-  const banks = `<div class="period-banks">
-    ${accRows.map((a) => (
-      isOwner()
-        ? `<button class="btn ghost sm" type="button" data-edit-account="${esc(a.id)}">${esc(a.name)} ${rupee(a.balance, 2)}</button>`
-        : `<span>${esc(a.name)} ${rupee(a.balance, 2)}</span>`
-    )).join("")}
-    <button class="btn ghost sm owner-only" type="button" data-add-account>Add account</button>
-  </div>`;
   $("home-summary").innerHTML =
-    periodCardHTML("Till now", "Since Oct 2022. Anything not saved or invested is spent.", buckets.till, banks) +
-    periodCardHTML("This month", Finance.monthLabel(Finance.thisMonth()), buckets.month);
+    periodCardHTML("Till now", ["Current balance", "Invested", "Spent"], buckets.till) +
+    periodCardHTML("This month", ["Incoming", "Invested", "Spent"], buckets.month);
 
   const investedAll = p.total.cost + fd.cost;
   const investGain = p.total.gain + fd.gain;
   $("home-invest-metrics").innerHTML = metricHTML([
     { label: "Current", value: rupee(p.total.market + fd.market), delta: `Stocks ${rupee(p.total.market)} · FD ${rupee(fd.market)}` },
-    { label: "Put in", value: rupee(investedAll) },
+    { label: "Invested", value: rupee(investedAll) },
     { label: "Unrealised P/L", value: rupee(investGain), delta: pct(investedAll ? investGain / investedAll : 0), tone: cls(investGain) },
   ]);
   $("home-spend-metrics").innerHTML = metricHTML([
@@ -643,9 +638,9 @@ function renderHome() {
   doughnut("home-spend-chart", cats.length ? cats : ["No spend yet"], cats.length ? cats.map((c) => s.byCat[c]) : [1]);
 }
 
-function periodCardHTML(title, note, b, extra = "") {
+function periodCardHTML(title, labels, b) {
   const segs = [
-    { key: "saved", pct: b.savedPct },
+    { key: "saved", pct: b.primaryPct },
     { key: "invested", pct: b.investedPct },
     { key: "spent", pct: b.spentPct },
   ].filter((row) => row.pct > 0);
@@ -659,62 +654,52 @@ function periodCardHTML(title, note, b, extra = "") {
   </div>`;
   return `<article class="period-card">
     <h2>${esc(title)}</h2>
-    <p class="period-note">${esc(note)}</p>
     <div class="period-stats">
-      ${stat("Saved", b.saved, b.savedPct)}
-      ${stat("Invested", b.invested, b.investedPct)}
-      ${stat("Spent", b.spent, b.spentPct)}
+      ${stat(labels[0], b.primary, b.primaryPct)}
+      ${stat(labels[1], b.invested, b.investedPct)}
+      ${stat(labels[2], b.spent, b.spentPct)}
     </div>
     <div class="split-bar">${bar}</div>
-    ${extra}
   </article>`;
 }
 
 function renderIncome() {
-  const m = Finance.moneyPicture({
-    expenses,
-    income,
-    fds,
-    accounts,
-    portfolioCost: 0,
-    portfolioMarket: 0,
-  });
+  const m = Finance.moneyPicture({ expenses, income, fds });
   $("income-metrics").innerHTML = metricHTML([
-    { label: "Take-home", value: rupee(m.takeHome), delta: "In-hand since Oct 2022" },
-    { label: "Provident fund", value: rupee(m.pf), delta: "Off the portfolio" },
+    { label: "Take-home", value: rupee(m.takeHome) },
+    { label: "Dividends", value: rupee(m.dividends) },
     { label: "Tax paid", value: rupee(m.tax) },
-    { label: "SSIP", value: rupee(m.ssip), delta: "Nokia stock from salary" },
-    { label: "Gross logged", value: rupee(m.gross), delta: "Take-home + PF + tax + SSIP" },
   ]);
-  const pfNote = $("income-pf-note");
-  if (pfNote) {
-    pfNote.textContent = m.pf
-      ? `EPF deducted at source: ${rupee(m.pf)} across ${income.filter((r) => Number(r.pf) > 0).length} payday${income.filter((r) => Number(r.pf) > 0).length === 1 ? "" : "s"}. Not cash, not a holding.`
-      : "EPF deducted at source. It is not cash in the bank and not a holding.";
-  }
 
   const pay = [...income].sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  $("income-rows").innerHTML = pay.length ? pay.map((r) => `
+  const totalEl = $("income-total-row");
+  if (totalEl) {
+    totalEl.innerHTML = pay.length ? `
+      <td>Total</td>
+      <td></td>
+      <td class="num">${rupee(m.incoming, 2)}</td>
+      <td class="num">${rupee(m.pf, 2)}</td>
+      <td class="num">${rupee(m.tax, 2)}</td>
+      <td></td>
+      <td class="owner-only"></td>` : "";
+    totalEl.classList.toggle("hidden", !pay.length);
+  }
+  $("income-rows").innerHTML = pay.length ? pay.map((r) => {
+    const kind = Finance.incomeKind(r);
+    const pfShow = kind === "salary" ? (Number(r.pf) || 0) * 2 : 0;
+    return `
     <tr>
       <td>${esc(fmtDate(r.date))}</td>
+      <td>${kind === "dividend" ? "Dividend" : "Salary"}</td>
       <td class="num">${rupee(r.amount, 2)}</td>
-      <td class="num">${rupee(r.pf, 2)}</td>
-      <td class="num">${rupee(r.tax, 2)}</td>
-      <td class="num">${rupee(r.ssip, 2)}</td>
+      <td class="num">${kind === "salary" ? rupee(pfShow, 2) : "—"}</td>
+      <td class="num">${kind === "salary" ? rupee(r.tax, 2) : "—"}</td>
       <td>${esc(r.notes || "")}</td>
       <td class="owner-only actions-cell">
-        <button class="icon-btn" type="button" data-del-income="${esc(r.id)}" aria-label="Delete salary">${trashSvg()}</button>
+        <button class="icon-btn" type="button" data-del-income="${esc(r.id)}" aria-label="Delete">${trashSvg()}</button>
       </td>
-    </tr>`).join("") : `<tr><td colspan="7" class="tiny">No paydays yet. Add one (usually the 24th or 25th).</td></tr>`;
-  $("income-foot").innerHTML = pay.length ? `<tr>
-    <td>Total</td>
-    <td class="num">${rupee(m.takeHome, 2)}</td>
-    <td class="num">${rupee(m.pf, 2)}</td>
-    <td class="num">${rupee(m.tax, 2)}</td>
-    <td class="num">${rupee(m.ssip, 2)}</td>
-    <td></td>
-    <td class="owner-only"></td>
-  </tr>` : "";
+    </tr>`;
+  }).join("") : `<tr><td colspan="7" class="tiny">No rows yet.</td></tr>`;
 }
 
 function trashSvg() {
@@ -1351,20 +1336,30 @@ function openAccountModal(existing) {
   `);
 }
 
-function openIncomeModal() {
-  moneyForm = { kind: "income", id: nid("inc") };
-  openOverlay(`
+function openIncomeModal(kind = "salary") {
+  const isDiv = kind === "dividend";
+  moneyForm = { kind: "income", id: nid("inc"), incomeKind: isDiv ? "dividend" : "salary" };
+  openOverlay(isDiv ? `
+    <h2>Add dividend</h2>
+    <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
+      <label class="field">Date<input type="date" id="m-date" value="${esc(todayISO())}" /></label>
+      <label class="field">Amount (₹)<input id="m-amount" type="text" inputmode="decimal" /></label>
+      <label class="field span-3">Notes<input id="m-notes" placeholder="Optional" /></label>
+    </div>
+    <p class="field-error" id="m-error"></p>
+    <div class="modal-footer">
+      <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
+      <button class="btn" type="button" id="money-save">Save dividend</button>
+    </div>
+  ` : `
     <h2>Add salary</h2>
-    <p class="lead">Take-home that hit the bank, and PF for this payday.</p>
     <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
       <label class="field">Date<input type="date" id="m-date" value="${esc(Finance.suggestedSalaryDate())}" /></label>
       <label class="field">Take-home (₹)<input id="m-amount" type="text" inputmode="decimal" /></label>
-      <label class="field">PF (₹)<input id="m-pf" type="text" inputmode="decimal" value="0" /></label>
+      <label class="field">Employee PF (₹)<input id="m-pf" type="text" inputmode="decimal" value="0" /></label>
       <label class="field">Tax (₹)<input id="m-tax" type="text" inputmode="decimal" value="0" /></label>
-      <label class="field">SSIP Nokia (₹)<input id="m-ssip" type="text" inputmode="decimal" value="0" /></label>
-      <label class="field">Notes<input id="m-notes" placeholder="Optional" /></label>
+      <label class="field span-3">Notes<input id="m-notes" placeholder="Optional" /></label>
     </div>
-    <p class="tiny" style="margin-top:8px">Date defaults to the 24th. Change it if you were paid on the 25th.</p>
     <p class="field-error" id="m-error"></p>
     <div class="modal-footer">
       <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
@@ -1424,13 +1419,15 @@ async function submitMoney() {
     } else if (moneyForm.kind === "income") {
       const date = ($("m-date").value || "").trim();
       const amount = Finance.parseInrInput($("m-amount").value);
-      const pf = Finance.parseInrInput($("m-pf").value || "0") || 0;
-      const tax = Finance.parseInrInput($("m-tax").value || "0") || 0;
-      const ssip = Finance.parseInrInput($("m-ssip").value || "0") || 0;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = "Pick the salary date"; return; }
-      if (!(amount > 0) && !(pf > 0)) { err.textContent = "Enter take-home or PF"; return; }
-      if (pf < 0 || tax < 0 || ssip < 0) { err.textContent = "PF, tax, and SSIP cannot be negative"; return; }
-      await api("addIncome", { income: { id: moneyForm.id, date, amount: amount > 0 ? amount : 0, pf, tax, ssip, notes: ($("m-notes").value || "").trim() } });
+      const incomeKind = moneyForm.incomeKind === "dividend" ? "dividend" : "salary";
+      const pf = incomeKind === "dividend" ? 0 : (Finance.parseInrInput($("m-pf")?.value || "0") || 0);
+      const tax = incomeKind === "dividend" ? 0 : (Finance.parseInrInput($("m-tax")?.value || "0") || 0);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = "Pick the date"; return; }
+      if (incomeKind === "dividend") {
+        if (!(amount > 0)) { err.textContent = "Enter the dividend amount"; return; }
+      } else if (!(amount > 0) && !(pf > 0)) { err.textContent = "Enter take-home or PF"; return; }
+      if (pf < 0 || tax < 0) { err.textContent = "PF and tax cannot be negative"; return; }
+      await api("addIncome", { income: { id: moneyForm.id, date, amount: amount > 0 ? amount : 0, pf, tax, ssip: 0, kind: incomeKind, notes: ($("m-notes").value || "").trim() } });
     } else if (moneyForm.kind === "fd") {
       const bank = ($("m-bank").value || "").trim();
       const invested = Finance.parseInrInput($("m-invested").value);
@@ -1675,7 +1672,8 @@ $("pf-platform").addEventListener("change", (e) => {
 
 $("nav-add-expense").addEventListener("click", startExpenseWizard);
 $("add-expense").addEventListener("click", startExpenseWizard);
-$("add-income").addEventListener("click", () => openIncomeModal());
+$("add-income").addEventListener("click", () => openIncomeModal("salary"));
+$("add-dividend").addEventListener("click", () => openIncomeModal("dividend"));
 $("add-fd").addEventListener("click", () => openFdModal());
 $("new-buy").addEventListener("click", () => openTradeModal("new"));
 $("refresh-quotes").addEventListener("click", refreshQuotes);

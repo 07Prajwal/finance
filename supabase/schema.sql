@@ -85,6 +85,7 @@ create table if not exists income (
   tax numeric not null default 0,
   ssip numeric not null default 0,
   notes text default '',
+  kind text not null default 'salary',
   created_at timestamptz default now()
 );
 

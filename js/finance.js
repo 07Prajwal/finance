@@ -797,6 +797,10 @@ export function suggestedSalaryDate(now = new Date()) {
   return isoFromParts(prev.getFullYear(), prev.getMonth() + 1, 24);
 }
 
+export function incomeKind(row) {
+  return String(row?.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary";
+}
+
 export function moneyPicture({
   expenses = [],
   income = [],
@@ -804,24 +808,35 @@ export function moneyPicture({
   accounts = [],
   portfolioCost = 0,
   portfolioMarket = 0,
+  realised = 0,
 } = {}) {
-  const takeHome = (income || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const pf = (income || []).reduce((s, r) => s + (Number(r.pf) || 0), 0);
+  const takeHome = (income || [])
+    .filter((r) => incomeKind(r) === "salary")
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const dividends = (income || [])
+    .filter((r) => incomeKind(r) === "dividend")
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const pfEmployee = (income || []).reduce((s, r) => s + (Number(r.pf) || 0), 0);
+  const pf = pfEmployee * 2;
   const tax = (income || []).reduce((s, r) => s + (Number(r.tax) || 0), 0);
   const ssip = (income || []).reduce((s, r) => s + (Number(r.ssip) || 0), 0);
-  const earned = takeHome;
+  const incoming = takeHome + dividends;
+  const earned = incoming;
   const spentLogged = sumAmounts(expenses);
+  const spent = spentLogged;
   const fdInvested = (fds || []).reduce((s, r) => s + (Number(r.invested) || 0), 0);
   const fdPrincipal = (fds || []).reduce((s, r) => s + (Number(r.principal) || 0), 0);
   const fdMaturity = (fds || []).reduce((s, r) => s + (Number(r.maturity_amount) || 0), 0);
   const invested = (Number(portfolioCost) || 0) + fdInvested;
-  const cash = (accounts || []).reduce((s, r) => s + (Number(r.balance) || 0), 0);
+  const booked = Number(realised) || 0;
+  const cash = incoming - spentLogged - invested + booked;
   const haveNow = cash + (Number(portfolioMarket) || 0) + fdPrincipal;
-  const allocated = spentLogged + invested + cash;
-  const gap = earned - allocated;
-  const spent = spentLogged + Math.max(0, gap);
+  const gap = 0;
   return {
     takeHome,
+    dividends,
+    incoming,
+    pfEmployee,
     pf,
     tax,
     ssip,
@@ -837,6 +852,7 @@ export function moneyPicture({
     saved: cash,
     haveNow,
     gap,
+    realised: booked,
     since: INCOME_SINCE,
   };
 }
@@ -902,16 +918,19 @@ export function flowSplit({
     .reduce((s, t) => s + (Number(t.cost_inr) || 0), 0);
   const leftover = earned - spent - invested;
   const saved = leftover > 0 ? leftover : 0;
-  const [savedPct, investedPct, spentPct] = splitPercents([saved, invested, spent]);
+  const [incomingPct, investedPct, spentPct] = splitPercents([earned, invested, spent]);
+  const savedPct = incomingPct;
   return {
     grain,
     earned,
+    incoming: earned,
     spentLogged: spent,
     spent,
     invested,
     saved,
     have: saved,
     leftover,
+    incomingPct,
     savedPct,
     havePct: savedPct,
     investedPct,
@@ -919,7 +938,7 @@ export function flowSplit({
   };
 }
 
-/** Till now and this month: saved, invested, spent. The untracked remainder is inside till-now spent. */
+/** Till now and this month: current balance / incoming, invested, spent. */
 export function overviewBuckets({
   expenses = [],
   income = [],
@@ -927,26 +946,27 @@ export function overviewBuckets({
   fds = [],
   portfolioCost = 0,
   trades = [],
+  realised = 0,
   now = new Date(),
 } = {}) {
-  const pic = moneyPicture({ expenses, income, fds, accounts, portfolioCost });
+  const pic = moneyPicture({ expenses, income, fds, accounts, portfolioCost, realised });
   const month = flowSplit({ expenses, income, trades, now, grain: "month" });
   const tillPct = splitPercents([pic.saved, pic.invested, pic.spent]);
   return {
     till: {
-      saved: pic.saved,
+      primary: pic.saved,
       invested: pic.invested,
       spent: pic.spent,
-      savedPct: tillPct[0],
+      primaryPct: tillPct[0],
       investedPct: tillPct[1],
       spentPct: tillPct[2],
       earned: pic.earned,
     },
     month: {
-      saved: month.saved,
+      primary: month.incoming,
       invested: month.invested,
       spent: month.spent,
-      savedPct: month.savedPct,
+      primaryPct: month.incomingPct,
       investedPct: month.investedPct,
       spentPct: month.spentPct,
       earned: month.earned,

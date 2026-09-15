@@ -16,6 +16,7 @@ create table if not exists income (
   tax numeric not null default 0,
   ssip numeric not null default 0,
   notes text default '',
+  kind text not null default 'salary',
   created_at timestamptz default now()
 );
 
@@ -41,3 +42,4 @@ grant all on table fds to service_role;
 
 alter table income add column if not exists tax numeric not null default 0;
 alter table income add column if not exists ssip numeric not null default 0;
+alter table income add column if not exists kind text not null default 'salary';

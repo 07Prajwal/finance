@@ -369,13 +369,16 @@ Deno.serve(async (req) => {
     if (op === "addIncome") {
       const row = body.income;
       const date = String(row?.date || "").slice(0, 10);
-      if (!row?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Pick the salary date" }, 400);
+      if (!row?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Pick the date" }, 400);
       const amt = Number(row.amount) || 0;
-      const pf = Number(row.pf) || 0;
-      const tax = Number(row.tax) || 0;
+      const kind = String(row.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary";
+      const pf = kind === "dividend" ? 0 : Number(row.pf) || 0;
+      const tax = kind === "dividend" ? 0 : Number(row.tax) || 0;
       const ssip = Number(row.ssip) || 0;
-      if (!(amt > 0) && !(pf > 0)) return json({ error: "Enter take-home or PF" }, 400);
-      if (pf < 0 || tax < 0 || ssip < 0) return json({ error: "PF, tax, and SSIP cannot be negative" }, 400);
+      if (kind === "dividend") {
+        if (!(amt > 0)) return json({ error: "Enter the dividend amount" }, 400);
+      } else if (!(amt > 0) && !(pf > 0)) return json({ error: "Enter take-home or PF" }, 400);
+      if (pf < 0 || tax < 0 || ssip < 0) return json({ error: "PF and tax cannot be negative" }, 400);
       const { error } = await client.from("income").insert({
         id: row.id,
         date,
@@ -384,6 +387,7 @@ Deno.serve(async (req) => {
         tax,
         ssip,
         notes: row.notes || "",
+        kind,
       });
       if (error) throw error;
       return json(await listAll(client));
@@ -404,6 +408,7 @@ Deno.serve(async (req) => {
             tax: Number(row.tax) || 0,
             ssip: Number(row.ssip) || 0,
             notes: row.notes || "",
+            kind: String(row.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary",
           })));
           if (error) throw error;
         }

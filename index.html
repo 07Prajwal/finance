@@ -11,7 +11,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=20" />
+  <link rel="stylesheet" href="css/app.css?v=21" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -64,7 +64,7 @@
         <div class="wrap overview-wrap">
           <header class="overview-head">
             <p class="kicker">Overview</p>
-            <h1>Saved, invested, spent.</h1>
+            <h1>Current balance, invested, spent.</h1>
           </header>
 
           <div class="period-pair" id="home-summary"></div>
@@ -227,34 +227,30 @@
       <section id="income" class="page">
         <div class="hero">
           <div class="kicker">Pay</div>
-          <h1>Salary, PF, tax.</h1>
-          <p class="lead">Each payday’s take-home, provident fund, tax, and Nokia SSIP. PF stays off the portfolio.</p>
+          <h1>Salary and tax.</h1>
+          <p class="lead">Take-home, dividends, and tax.</p>
         </div>
         <div class="wrap section" style="padding-top:0">
           <div class="split">
             <span class="status" id="income-status"></span>
             <div class="row-actions">
               <button class="btn sm owner-only" type="button" id="add-income">Add salary</button>
+              <button class="btn secondary sm owner-only" type="button" id="add-dividend">Add dividend</button>
             </div>
           </div>
           <div class="metrics" id="income-metrics"></div>
-          <div class="card" style="margin:20px 0">
-            <h3>Provident fund</h3>
-            <p class="tiny" id="income-pf-note">EPF deducted at source. It is not cash in the bank and not a holding.</p>
-          </div>
-          <div class="card">
-            <h3>Salary history</h3>
-            <p class="tiny" style="margin-bottom:12px">Usually the 24th, or the 25th for Oct 2022. Tax and SSIP are per payday when they apply.</p>
+          <div class="card" style="margin-top:20px">
+            <h3>History</h3>
             <div style="overflow:auto">
               <table>
                 <thead>
                   <tr>
-                    <th>Date</th><th class="num">Take-home</th><th class="num">PF</th><th class="num">Tax</th><th class="num">SSIP</th><th>Notes</th>
+                    <th>Date</th><th>Type</th><th class="num">Amount</th><th class="num">PF</th><th class="num">Tax</th><th>Notes</th>
                     <th class="owner-only"></th>
                   </tr>
+                  <tr id="income-total-row" class="income-total hidden"></tr>
                 </thead>
                 <tbody id="income-rows"></tbody>
-                <tfoot id="income-foot"></tfoot>
               </table>
             </div>
           </div>
@@ -287,15 +283,12 @@
       </section>
     </main>
 
-    <footer>
-      Live quotes are fetched from Yahoo Finance through the app server.
-    </footer>
   </div>
 
   <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=19"></script>
+  <script type="module" src="js/app.js?v=20"></script>
 </body>
 </html>

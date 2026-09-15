@@ -241,7 +241,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .metrics.metrics-2 { grid-template-columns: repeat(2, 1fr); }
 .metrics.metrics-5 { grid-template-columns: repeat(5, 1fr); }
-#income-metrics { grid-template-columns: repeat(5, 1fr); }
+#income-metrics { grid-template-columns: repeat(3, 1fr); }
 #pf-metrics { grid-template-columns: repeat(6, 1fr); }
 .metric {
   background: var(--surface); border-radius: var(--radius); padding: 20px 16px;
@@ -356,7 +356,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 th { font-size: 12px; font-weight: 500; color: var(--muted); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-tfoot td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--ink); }
+tfoot td, thead tr.income-total td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--ink); }
 tr.loss td.gain { color: var(--error); }
 tr.sold { opacity: 0.78; }
 tr.sold-row { cursor: pointer; }
