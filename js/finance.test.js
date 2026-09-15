@@ -36,6 +36,9 @@ import {
   suggestedSalaryDate,
   moneyPicture,
   fdSleeve,
+  fdValue,
+  addMonths,
+  parseIncomeKind,
   flowSplit,
   splitPercents,
   overviewBuckets,
@@ -452,82 +455,141 @@ describe("income picture", () => {
     assert.equal(suggestedSalaryDate(new Date(2026, 8, 24)), "2026-09-24");
     assert.equal(suggestedSalaryDate(new Date(2026, 8, 15)), "2026-08-24");
   });
-  it("splits incoming into current balance, invested, and spent", () => {
+  it("uses bank cash as current balance and folds unlogged spend into spent", () => {
     const pic = moneyPicture({
       expenses: [{ amount: 10000 }],
-      income: [{ amount: 80000, pf: 5000 }],
+      income: [{ amount: 800000, pf: 5000 }],
+      accounts: [{ balance: 148000 }],
       fds: [{ invested: 120000, principal: 131047, maturity_amount: 141784.4 }],
       portfolioCost: 200000,
       portfolioMarket: 220000,
       realised: 0,
     });
     assert.equal(pic.since, INCOME_SINCE);
-    close(pic.takeHome, 80000, 0.01);
+    close(pic.takeHome, 800000, 0.01);
     close(pic.pfEmployee, 5000, 0.01);
     close(pic.pf, 10000, 0.01);
-    close(pic.earned, 80000, 0.01);
-    close(pic.spent, 10000, 0.01);
+    close(pic.earned, 800000, 0.01);
+    close(pic.saved, 148000, 0.01);
     close(pic.invested, 320000, 0.01);
-    close(pic.saved, 80000 - 10000 - 320000, 0.01);
-    close(pic.haveNow, pic.saved + 220000 + 131047, 0.01);
+    close(pic.spent, 800000 - 148000 - 320000, 0.01);
+    close(pic.haveNow, 148000 + 220000 + 131047, 0.01);
   });
   it("counts employer PF equal to the employee amount", () => {
     const pic = moneyPicture({ income: [{ amount: 80000, pf: 4946 }] });
     close(pic.pfEmployee, 4946, 0.01);
     close(pic.pf, 9892, 0.01);
   });
-  it("adds dividends to incoming and current balance", () => {
+  it("adds dividends and other income to incoming", () => {
     const pic = moneyPicture({
       expenses: [{ amount: 10000 }],
       income: [
         { amount: 80000, kind: "salary" },
         { amount: 5000, kind: "dividend" },
+        { amount: 3000, kind: "other" },
       ],
+      accounts: [{ balance: 27000 }],
       fds: [{ invested: 20000, principal: 21000 }],
       portfolioCost: 30000,
-      realised: 2000,
     });
-    close(pic.incoming, 85000, 0.01);
+    close(pic.incoming, 88000, 0.01);
     close(pic.dividends, 5000, 0.01);
+    close(pic.other, 3000, 0.01);
     close(pic.invested, 50000, 0.01);
-    close(pic.spent, 10000, 0.01);
-    close(pic.saved, 85000 - 10000 - 50000 + 2000, 0.01);
+    close(pic.saved, 27000, 0.01);
+    close(pic.spent, 88000 - 27000 - 50000, 0.01);
+    assert.equal(parseIncomeKind("other"), "other");
   });
-  it("raises current balance when an expense is removed", () => {
-    const withExp = moneyPicture({
-      expenses: [{ amount: 10000 }],
+  it("does not drop spent below logged expenses", () => {
+    const pic = moneyPicture({
+      expenses: [{ amount: 50000 }],
       income: [{ amount: 80000 }],
-      portfolioCost: 20000,
+      accounts: [{ balance: 70000 }],
     });
-    const withoutExp = moneyPicture({
-      expenses: [],
-      income: [{ amount: 80000 }],
-      portfolioCost: 20000,
-    });
-    close(withoutExp.saved - withExp.saved, 10000, 0.01);
+    close(pic.spent, 50000, 0.01);
+    close(pic.saved, 70000, 0.01);
   });
   it("overview buckets expose till now and this month", () => {
     const buckets = overviewBuckets({
       now: new Date(2026, 8, 15),
       expenses: [{ amount: 10000, date: "2026-09-02" }],
       income: [{ amount: 500000, date: "2026-01-24" }, { amount: 80000, date: "2026-08-24" }],
+      accounts: [{ balance: 50000 }],
       fds: [{ invested: 120000, principal: 131047 }],
       portfolioCost: 200000,
       trades: [{ side: "buy", date: "2026-09-10", cost_inr: 5000 }],
     });
     close(buckets.till.invested, 320000, 0.01);
-    close(buckets.till.spent, 10000, 0.01);
-    close(buckets.till.primary, 580000 - 10000 - 320000, 0.01);
+    close(buckets.till.primary, 50000, 0.01);
+    close(buckets.till.spent, 580000 - 50000 - 320000, 0.01);
     close(buckets.month.spent, 10000, 0.01);
     close(buckets.month.invested, 5000, 0.01);
     close(buckets.month.primary, 0, 0.01);
   });
-  it("FD sleeve uses principal as current value", () => {
+  it("FD sleeve uses estimated current when no maturity date is set", () => {
     const fd = fdSleeve([{ invested: 120000, principal: 131047, maturity_amount: 141784.4 }]);
     close(fd.cost, 120000, 0.01);
     close(fd.market, 131047, 0.01);
     close(fd.gain, 11047, 0.01);
     assert.equal(fd.count, 1);
+  });
+  it("grows FD current between cycle start and maturity", () => {
+    const hdfc = {
+      invested: 120000,
+      principal: 131047,
+      roi: 6.35,
+      years: 1.25,
+      maturity_date: "2027-03-31",
+      auto_renew: true,
+      maturity_amount: 141784.4,
+    };
+    const v = fdValue(hdfc, new Date(2026, 8, 15));
+    assert.equal(v.status, "active");
+    assert.ok(v.current > 131047);
+    assert.ok(v.current < 141784.4);
+    close(v.invested, 120000, 0.01);
+    close(v.maturity, 141784.4, 0.01);
+  });
+  it("pays a matured FD into current balance when it is not renewed", () => {
+    const hdfc = {
+      invested: 120000,
+      principal: 131047,
+      roi: 6.35,
+      years: 1.25,
+      maturity_date: "2027-03-31",
+      auto_renew: false,
+      maturity_amount: 141784.4,
+    };
+    const v = fdValue(hdfc, new Date(2027, 3, 1));
+    assert.equal(v.closed, true);
+    close(v.payout, 141784.4, 0.01);
+    close(v.current, 0, 0.01);
+    const pic = moneyPicture({
+      fds: [hdfc],
+      accounts: [{ balance: 148000 }],
+      now: new Date(2027, 3, 1),
+    });
+    close(pic.saved, 148000 + 141784.4, 0.01);
+    close(pic.invested, 0, 0.01);
+  });
+  it("rolls an auto-renewed FD into a new term after maturity", () => {
+    const hdfc = {
+      invested: 120000,
+      principal: 131047,
+      roi: 6.35,
+      years: 1.25,
+      maturity_date: "2027-03-31",
+      auto_renew: true,
+      maturity_amount: 141784.4,
+    };
+    const v = fdValue(hdfc, new Date(2027, 2, 31));
+    assert.equal(v.closed, false);
+    assert.equal(v.status, "renewed");
+    close(v.invested, 120000, 0.01);
+    close(v.current, 141784.4, 1);
+    assert.equal(v.matures, "2028-06-30");
+    const end = addMonths(new Date(2027, 2, 31), 15);
+    assert.equal(`${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`, "2028-06-30");
   });
   it("year and month splits leftover take-home against buys and spend", () => {
     const now = new Date(2026, 8, 15);

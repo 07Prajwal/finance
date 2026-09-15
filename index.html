@@ -11,7 +11,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=21" />
+  <link rel="stylesheet" href="css/app.css?v=22" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -228,7 +228,7 @@
         <div class="hero">
           <div class="kicker">Pay</div>
           <h1>Salary and tax.</h1>
-          <p class="lead">Take-home, dividends, and tax.</p>
+          <p class="lead">Take-home, dividends, other income, and tax.</p>
         </div>
         <div class="wrap section" style="padding-top:0">
           <div class="split">
@@ -236,6 +236,7 @@
             <div class="row-actions">
               <button class="btn sm owner-only" type="button" id="add-income">Add salary</button>
               <button class="btn secondary sm owner-only" type="button" id="add-dividend">Add dividend</button>
+              <button class="btn secondary sm owner-only" type="button" id="add-other-income">Add other</button>
             </div>
           </div>
           <div class="metrics" id="income-metrics"></div>
@@ -289,6 +290,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=20"></script>
+  <script type="module" src="js/app.js?v=21"></script>
 </body>
 </html>

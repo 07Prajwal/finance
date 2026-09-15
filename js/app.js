@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=20";
+import * as Finance from "./finance.js?v=21";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -9,8 +9,8 @@ const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const IDLE_MS = 10 * 60 * 1000;
 
 const NUM = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
-const PALETTE_LIGHT = ["#0071E3", "#1D1D1F", "#6E6E73", "#86868b", "#A1A1A6", "#D2D2D7"];
-const PALETTE_DARK = ["#0A84FF", "#F5F5F7", "#A1A1A6", "#8E8E93", "#636366", "#48484A"];
+const PALETTE_LIGHT = ["#0071E3", "#FF9F0A", "#30D158", "#FF375F", "#BF5AF2", "#64D2FF", "#FFD60A", "#AC8E68"];
+const PALETTE_DARK = ["#0A84FF", "#FF9F0A", "#32D74B", "#FF453A", "#BF5AF2", "#64D2FF", "#FFD60A", "#FF6482"];
 
 const EXPENSE_TYPES = ["Our Expense", "Home Expense", "My Expense"];
 const EXPENSE_CATS = ["Food", "Quick Delivery", "Travel", "Shopping", "Medicine", "Other"];
@@ -144,6 +144,17 @@ function saveLocalData(data) {
   }));
 }
 
+function nudgeCash(delta) {
+  const n = Number(delta) || 0;
+  if (!n) return;
+  let row = accounts.find((a) => /icici/i.test(String(a.name || ""))) || accounts[0];
+  if (!row) {
+    row = { id: nid("a"), name: "Cash", balance: 0 };
+    accounts.push(row);
+  }
+  row.balance = Math.round(((Number(row.balance) || 0) + n) * 100) / 100;
+}
+
 function findHolding(id) {
   for (const key of ["indian", "mf", "foreign"]) {
     const idx = (portfolio[key] || []).findIndex((h) => h.id === id);
@@ -168,8 +179,11 @@ async function localApi(op, payload = {}) {
 
   if (op === "addExpense") {
     expenses.unshift(payload.expense);
+    nudgeCash(-(Number(payload.expense?.amount) || 0));
   } else if (op === "deleteExpense") {
+    const gone = expenses.find((e) => e.id === payload.id);
     expenses = expenses.filter((e) => e.id !== payload.id);
+    nudgeCash(Number(gone?.amount) || 0);
   } else if (op === "buy" || op === "sell") {
     const found = findHolding(payload.holdingId);
     if (!found) throw new Error("Holding not found");
@@ -191,6 +205,7 @@ async function localApi(op, payload = {}) {
       proceeds_inr: res.trade.proceedsInr,
       realised: res.trade.realised,
     });
+    nudgeCash(op === "sell" ? Number(res.trade.proceedsInr) || 0 : -(Number(res.trade.costInr) || 0));
   } else if (op === "newBuy") {
     const date = String(payload.date || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the buy date");
@@ -220,6 +235,7 @@ async function localApi(op, payload = {}) {
       proceeds_inr: 0,
       realised: 0,
     });
+    nudgeCash(-(Number(created.trade.costInr) || 0));
   } else if (op === "updateQuotes") {
     const apply = (row) => {
       const q = (payload.holdings || []).find((h) => h.id === row.id);
@@ -245,12 +261,13 @@ async function localApi(op, payload = {}) {
     const date = String(row?.date || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the date");
     const amt = Number(row.amount) || 0;
-    const kind = String(row.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary";
-    const pf = kind === "dividend" ? 0 : Number(row.pf) || 0;
-    const tax = kind === "dividend" ? 0 : Number(row.tax) || 0;
+    const kind = Finance.parseIncomeKind(row.kind);
+    const simple = kind !== "salary";
+    const pf = simple ? 0 : Number(row.pf) || 0;
+    const tax = simple ? 0 : Number(row.tax) || 0;
     const ssip = Number(row.ssip) || 0;
-    if (kind === "dividend") {
-      if (!(amt > 0)) throw new Error("Enter the dividend amount");
+    if (simple) {
+      if (!(amt > 0)) throw new Error(kind === "other" ? "Enter the amount" : "Enter the dividend amount");
     } else if (!(amt > 0) && !(pf > 0)) throw new Error("Enter take-home or PF");
     if (pf < 0 || tax < 0 || ssip < 0) throw new Error("PF and tax cannot be negative");
     income.unshift({
@@ -263,8 +280,11 @@ async function localApi(op, payload = {}) {
       notes: row.notes || "",
       kind,
     });
+    nudgeCash(amt);
   } else if (op === "deleteIncome") {
+    const gone = income.find((x) => x.id === payload.id);
     income = income.filter((x) => x.id !== payload.id);
+    nudgeCash(-(Number(gone?.amount) || 0));
   } else if (op === "upsertFd") {
     const f = payload.fd;
     if (!f?.id || !String(f.bank || "").trim()) throw new Error("Bank name is required");
@@ -282,9 +302,14 @@ async function localApi(op, payload = {}) {
     };
     const i = fds.findIndex((x) => x.id === f.id);
     if (i >= 0) fds[i] = next;
-    else fds.push(next);
+    else {
+      fds.push(next);
+      nudgeCash(-next.invested);
+    }
   } else if (op === "deleteFd") {
+    const gone = fds.find((x) => x.id === payload.id);
     fds = fds.filter((x) => x.id !== payload.id);
+    nudgeCash(Number(gone?.invested) || 0);
   } else {
     throw new Error("Unknown operation");
   }
@@ -612,6 +637,7 @@ function renderHome() {
   const buckets = Finance.overviewBuckets({
     expenses,
     income,
+    accounts,
     fds,
     portfolioCost: p.total.cost,
     trades: p.trades,
@@ -664,10 +690,11 @@ function periodCardHTML(title, labels, b) {
 }
 
 function renderIncome() {
-  const m = Finance.moneyPicture({ expenses, income, fds });
+  const m = Finance.moneyPicture({ expenses, income, fds, accounts });
   $("income-metrics").innerHTML = metricHTML([
     { label: "Take-home", value: rupee(m.takeHome) },
     { label: "Dividends", value: rupee(m.dividends) },
+    { label: "Other", value: rupee(m.other) },
     { label: "Tax paid", value: rupee(m.tax) },
   ]);
 
@@ -690,7 +717,7 @@ function renderIncome() {
     return `
     <tr>
       <td>${esc(fmtDate(r.date))}</td>
-      <td>${kind === "dividend" ? "Dividend" : "Salary"}</td>
+      <td>${esc(Finance.incomeKindLabel(kind))}</td>
       <td class="num">${rupee(r.amount, 2)}</td>
       <td class="num">${kind === "salary" ? rupee(pfShow, 2) : "—"}</td>
       <td class="num">${kind === "salary" ? rupee(r.tax, 2) : "—"}</td>
@@ -841,38 +868,41 @@ function renderFdTable(fd) {
   const title = $("pf-table-title");
   if (title) title.textContent = "Fixed deposits";
   const note = $("pf-table-note");
-  if (note) note.textContent = "Principal is the current FD value. Gain is principal minus what you put in. FDs are not stocks, so no XIRR here.";
+  if (note) {
+    note.textContent = "Invested is what you first put in. Current grows with the ROI until the next maturity. If auto-renew is on, a new term starts from that amount. If it is not renewed, the maturity amount moves into Current balance and this FD is no longer invested.";
+  }
   $("pf-head").innerHTML = `<tr>
-    <th>Bank</th><th class="num">Invested</th><th class="num">Principal</th><th class="num">ROI %</th>
-    <th>Years</th><th>Matures</th><th>Renew</th><th class="num">Maturity</th><th class="num">Gain</th>
+    <th>Bank</th><th class="num">Invested</th><th class="num">Current</th><th class="num">At maturity</th>
+    <th>Matures</th><th>Status</th>
     <th class="owner-only"></th>
   </tr>`;
   $("pf-rows").innerHTML = fds.length ? fds.map((f) => {
-    const gain = (Number(f.principal) || 0) - (Number(f.invested) || 0);
+    const snap = Finance.fdValue(f);
+    const status = snap.status === "paid"
+      ? `Paid to cash ${fmtDate(snap.matures)}`
+      : snap.status === "renewed"
+        ? `Renewed · next ${fmtDate(snap.matures)}`
+        : (f.auto_renew ? "Open · auto-renew" : "Open");
     return `
-    <tr class="${gain < 0 ? "loss" : ""}">
+    <tr class="${snap.closed ? "loss" : ""}">
       <td><strong>${esc(f.bank)}</strong></td>
-      <td class="num">${rupee(f.invested, 2)}</td>
-      <td class="num">${rupee(f.principal, 2)}</td>
-      <td class="num">${NUM.format(f.roi)}</td>
-      <td>${esc(f.years)}</td>
-      <td>${esc(fmtDate(f.maturity_date))}</td>
-      <td>${f.auto_renew ? "Yes" : "No"}</td>
-      <td class="num">${rupee(f.maturity_amount, 2)}</td>
-      <td class="num ${gain >= 0 ? "gain" : "loss"}">${rupee(gain, 2)}</td>
+      <td class="num">${rupee(snap.invested, 2)}</td>
+      <td class="num">${rupee(snap.current, 2)}</td>
+      <td class="num">${rupee(snap.maturity, 2)}</td>
+      <td>${esc(fmtDate(snap.matures || f.maturity_date))}</td>
+      <td>${esc(status)}</td>
       <td class="owner-only actions-cell">
         <button class="icon-btn buy" type="button" data-edit-fd="${esc(f.id)}">Edit</button>
         <button class="icon-btn" type="button" data-del-fd="${esc(f.id)}" aria-label="Delete FD">${trashSvg()}</button>
       </td>
     </tr>`;
-  }).join("") : `<tr><td colspan="10" class="tiny">Add an FD on this tab. It counts as invested, not as a stock.</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="tiny">Add an FD on this tab. It counts as invested, not as a stock.</td></tr>`;
   $("pf-foot").innerHTML = fds.length ? `<tr>
     <td>Total</td>
     <td class="num">${rupee(fd.cost, 2)}</td>
     <td class="num">${rupee(fd.market, 2)}</td>
-    <td></td><td></td><td></td><td></td>
     <td class="num">${rupee(fd.maturity, 2)}</td>
-    <td class="num ${fd.gain >= 0 ? "gain" : "loss"}">${rupee(fd.gain, 2)}</td>
+    <td></td><td></td>
     <td class="owner-only"></td>
   </tr>` : "";
 }
@@ -1337,19 +1367,23 @@ function openAccountModal(existing) {
 }
 
 function openIncomeModal(kind = "salary") {
-  const isDiv = kind === "dividend";
-  moneyForm = { kind: "income", id: nid("inc"), incomeKind: isDiv ? "dividend" : "salary" };
-  openOverlay(isDiv ? `
-    <h2>Add dividend</h2>
+  const incomeKind = Finance.parseIncomeKind(kind);
+  const simple = incomeKind !== "salary";
+  moneyForm = { kind: "income", id: nid("inc"), incomeKind };
+  const title = incomeKind === "dividend" ? "Add dividend" : incomeKind === "other" ? "Add other income" : "Add salary";
+  const save = incomeKind === "dividend" ? "Save dividend" : incomeKind === "other" ? "Save other income" : "Save salary";
+  const amountLabel = incomeKind === "dividend" ? "Amount (₹)" : incomeKind === "other" ? "Amount (₹)" : "Take-home (₹)";
+  openOverlay(simple ? `
+    <h2>${title}</h2>
     <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
       <label class="field">Date<input type="date" id="m-date" value="${esc(todayISO())}" /></label>
-      <label class="field">Amount (₹)<input id="m-amount" type="text" inputmode="decimal" /></label>
+      <label class="field">${amountLabel}<input id="m-amount" type="text" inputmode="decimal" /></label>
       <label class="field span-3">Notes<input id="m-notes" placeholder="Optional" /></label>
     </div>
     <p class="field-error" id="m-error"></p>
     <div class="modal-footer">
       <button class="btn secondary" type="button" id="dlg-cancel">Cancel</button>
-      <button class="btn" type="button" id="money-save">Save dividend</button>
+      <button class="btn" type="button" id="money-save">${save}</button>
     </div>
   ` : `
     <h2>Add salary</h2>
@@ -1376,11 +1410,10 @@ function openFdModal(existing) {
     <div class="fields" style="grid-template-columns:1fr 1fr;margin-top:12px">
       <label class="field">Bank<input id="m-bank" value="${esc(existing?.bank || "")}" placeholder="HDFC" /></label>
       <label class="field">Invested (₹)<input id="m-invested" type="text" inputmode="decimal" value="${existing ? esc(existing.invested) : ""}" /></label>
-      <label class="field">Principal (₹)<input id="m-principal" type="text" inputmode="decimal" value="${existing ? esc(existing.principal) : ""}" /></label>
       <label class="field">ROI %<input id="m-roi" type="text" inputmode="decimal" value="${existing ? esc(existing.roi) : ""}" /></label>
-      <label class="field">Years<input id="m-years" type="text" inputmode="decimal" value="${existing ? esc(existing.years) : ""}" /></label>
+      <label class="field">Term (years)<input id="m-years" type="text" inputmode="decimal" value="${existing ? esc(existing.years) : "1.25"}" placeholder="1.25 = 1 year 3 months" /></label>
       <label class="field">Maturity date<input type="date" id="m-maturity" value="${esc(mat)}" /></label>
-      <label class="field">Maturity amount (₹)<input id="m-maturity-amt" type="text" inputmode="decimal" value="${existing ? esc(existing.maturity_amount) : ""}" /></label>
+      <label class="field">At maturity (₹)<input id="m-maturity-amt" type="text" inputmode="decimal" value="${existing ? esc(existing.maturity_amount) : ""}" /></label>
       <label class="field">Auto-renew
         <select id="m-renew"><option value="no"${existing && !existing.auto_renew ? " selected" : ""}>No</option><option value="yes"${existing?.auto_renew ? " selected" : ""}>Yes</option></select>
       </label>
@@ -1419,19 +1452,21 @@ async function submitMoney() {
     } else if (moneyForm.kind === "income") {
       const date = ($("m-date").value || "").trim();
       const amount = Finance.parseInrInput($("m-amount").value);
-      const incomeKind = moneyForm.incomeKind === "dividend" ? "dividend" : "salary";
-      const pf = incomeKind === "dividend" ? 0 : (Finance.parseInrInput($("m-pf")?.value || "0") || 0);
-      const tax = incomeKind === "dividend" ? 0 : (Finance.parseInrInput($("m-tax")?.value || "0") || 0);
+      const incomeKind = Finance.parseIncomeKind(moneyForm.incomeKind);
+      const simple = incomeKind !== "salary";
+      const pf = simple ? 0 : (Finance.parseInrInput($("m-pf")?.value || "0") || 0);
+      const tax = simple ? 0 : (Finance.parseInrInput($("m-tax")?.value || "0") || 0);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { err.textContent = "Pick the date"; return; }
-      if (incomeKind === "dividend") {
-        if (!(amount > 0)) { err.textContent = "Enter the dividend amount"; return; }
+      if (simple) {
+        if (!(amount > 0)) { err.textContent = incomeKind === "other" ? "Enter the amount" : "Enter the dividend amount"; return; }
       } else if (!(amount > 0) && !(pf > 0)) { err.textContent = "Enter take-home or PF"; return; }
       if (pf < 0 || tax < 0) { err.textContent = "PF and tax cannot be negative"; return; }
       await api("addIncome", { income: { id: moneyForm.id, date, amount: amount > 0 ? amount : 0, pf, tax, ssip: 0, kind: incomeKind, notes: ($("m-notes").value || "").trim() } });
     } else if (moneyForm.kind === "fd") {
       const bank = ($("m-bank").value || "").trim();
       const invested = Finance.parseInrInput($("m-invested").value);
-      const principal = Finance.parseInrInput($("m-principal").value || $("m-invested").value);
+      const existing = fds.find((f) => f.id === moneyForm.id);
+      const principal = existing && Number(existing.principal) > 0 ? Number(existing.principal) : invested;
       const roi = Number($("m-roi").value);
       const years = Number($("m-years").value);
       const maturity_amount = Finance.parseInrInput($("m-maturity-amt").value || "0");
@@ -1674,6 +1709,7 @@ $("nav-add-expense").addEventListener("click", startExpenseWizard);
 $("add-expense").addEventListener("click", startExpenseWizard);
 $("add-income").addEventListener("click", () => openIncomeModal("salary"));
 $("add-dividend").addEventListener("click", () => openIncomeModal("dividend"));
+$("add-other-income").addEventListener("click", () => openIncomeModal("other"));
 $("add-fd").addEventListener("click", () => openFdModal());
 $("new-buy").addEventListener("click", () => openTradeModal("new"));
 $("refresh-quotes").addEventListener("click", refreshQuotes);

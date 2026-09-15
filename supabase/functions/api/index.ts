@@ -48,6 +48,34 @@ function requireTradeDate(body) {
   return d;
 }
 
+function parseIncomeKind(kind) {
+  const k = String(kind || "").toLowerCase();
+  if (k === "dividend" || k === "other") return k;
+  return "salary";
+}
+
+async function nudgeCash(client, delta) {
+  const n = Number(delta) || 0;
+  if (!n) return;
+  const rows = await maybeRows(client.from("accounts").select("*").order("name"));
+  let row = (rows || []).find((a) => /icici/i.test(String(a.name || ""))) || (rows || [])[0];
+  if (!row) {
+    await client.from("accounts").insert({
+      id: crypto.randomUUID(),
+      name: "Cash",
+      balance: Math.round(n * 100) / 100,
+      updated_at: new Date().toISOString(),
+    });
+    return;
+  }
+  const next = Math.round(((Number(row.balance) || 0) + n) * 100) / 100;
+  const { error } = await client.from("accounts").update({
+    balance: next,
+    updated_at: new Date().toISOString(),
+  }).eq("id", row.id);
+  if (error) throw error;
+}
+
 async function maybeRows(query) {
   const r = await query;
   if (r.error) {
@@ -222,13 +250,16 @@ Deno.serve(async (req) => {
         notes: e.notes || "",
       });
       if (error) throw error;
+      await nudgeCash(client, -(Number(e.amount) || 0));
       return json(await listAll(client));
     }
 
     if (op === "deleteExpense") {
       if (!body.id) return json({ error: "Missing id" }, 400);
+      const { data: gone } = await client.from("expenses").select("amount").eq("id", body.id).maybeSingle();
       const { error } = await client.from("expenses").delete().eq("id", body.id);
       if (error) throw error;
+      await nudgeCash(client, Number(gone?.amount) || 0);
       return json(await listAll(client));
     }
 
@@ -261,6 +292,7 @@ Deno.serve(async (req) => {
         realised: res.trade.realised,
       });
       if (terr) throw terr;
+      await nudgeCash(client, op === "sell" ? Number(res.trade.proceedsInr) || 0 : -(Number(res.trade.costInr) || 0));
       return json(await listAll(client));
     }
 
@@ -310,6 +342,7 @@ Deno.serve(async (req) => {
         proceeds_inr: 0,
         realised: 0,
       });
+      await nudgeCash(client, -(Number(created.trade.costInr) || 0));
       return json(await listAll(client));
     }
 
@@ -371,12 +404,13 @@ Deno.serve(async (req) => {
       const date = String(row?.date || "").slice(0, 10);
       if (!row?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Pick the date" }, 400);
       const amt = Number(row.amount) || 0;
-      const kind = String(row.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary";
-      const pf = kind === "dividend" ? 0 : Number(row.pf) || 0;
-      const tax = kind === "dividend" ? 0 : Number(row.tax) || 0;
+      const kind = parseIncomeKind(row.kind);
+      const simple = kind !== "salary";
+      const pf = simple ? 0 : Number(row.pf) || 0;
+      const tax = simple ? 0 : Number(row.tax) || 0;
       const ssip = Number(row.ssip) || 0;
-      if (kind === "dividend") {
-        if (!(amt > 0)) return json({ error: "Enter the dividend amount" }, 400);
+      if (simple) {
+        if (!(amt > 0)) return json({ error: kind === "other" ? "Enter the amount" : "Enter the dividend amount" }, 400);
       } else if (!(amt > 0) && !(pf > 0)) return json({ error: "Enter take-home or PF" }, 400);
       if (pf < 0 || tax < 0 || ssip < 0) return json({ error: "PF and tax cannot be negative" }, 400);
       const { error } = await client.from("income").insert({
@@ -390,6 +424,7 @@ Deno.serve(async (req) => {
         kind,
       });
       if (error) throw error;
+      await nudgeCash(client, amt);
       return json(await listAll(client));
     }
     if (op === "replaceMoney") {
@@ -408,7 +443,7 @@ Deno.serve(async (req) => {
             tax: Number(row.tax) || 0,
             ssip: Number(row.ssip) || 0,
             notes: row.notes || "",
-            kind: String(row.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary",
+            kind: parseIncomeKind(row.kind),
           })));
           if (error) throw error;
         }
@@ -448,14 +483,17 @@ Deno.serve(async (req) => {
     }
     if (op === "deleteIncome") {
       if (!body.id) return json({ error: "Missing id" }, 400);
+      const { data: gone } = await client.from("income").select("amount").eq("id", body.id).maybeSingle();
       const { error } = await client.from("income").delete().eq("id", body.id);
       if (error) throw error;
+      await nudgeCash(client, -(Number(gone?.amount) || 0));
       return json(await listAll(client));
     }
     if (op === "upsertFd") {
       const f = body.fd;
       if (!f?.id || !String(f.bank || "").trim()) return json({ error: "Bank name is required" }, 400);
       if (!(Number(f.invested) > 0)) return json({ error: "Invested amount must be greater than 0" }, 400);
+      const { data: existing } = await client.from("fds").select("id").eq("id", f.id).maybeSingle();
       const { error } = await client.from("fds").upsert({
         id: f.id,
         bank: String(f.bank).trim(),
@@ -468,12 +506,15 @@ Deno.serve(async (req) => {
         maturity_amount: Number(f.maturity_amount) || 0,
       });
       if (error) throw error;
+      if (!existing) await nudgeCash(client, -(Number(f.invested) || 0));
       return json(await listAll(client));
     }
     if (op === "deleteFd") {
       if (!body.id) return json({ error: "Missing id" }, 400);
+      const { data: gone } = await client.from("fds").select("invested").eq("id", body.id).maybeSingle();
       const { error } = await client.from("fds").delete().eq("id", body.id);
       if (error) throw error;
+      await nudgeCash(client, Number(gone?.invested) || 0);
       return json(await listAll(client));
     }
 

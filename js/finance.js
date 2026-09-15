@@ -797,8 +797,97 @@ export function suggestedSalaryDate(now = new Date()) {
   return isoFromParts(prev.getFullYear(), prev.getMonth() + 1, 24);
 }
 
+export function parseIncomeKind(kind) {
+  const k = String(kind || "").toLowerCase();
+  if (k === "dividend") return "dividend";
+  if (k === "other") return "other";
+  return "salary";
+}
+
 export function incomeKind(row) {
-  return String(row?.kind || "").toLowerCase() === "dividend" ? "dividend" : "salary";
+  return parseIncomeKind(row?.kind);
+}
+
+export function incomeKindLabel(kind) {
+  if (kind === "dividend") return "Dividend";
+  if (kind === "other") return "Other";
+  return "Salary";
+}
+
+function parseISODate(iso) {
+  const s = String(iso || "").slice(0, 10);
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function toISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function addMonths(date, months) {
+  const y = date.getFullYear();
+  const m = date.getMonth() + Number(months || 0);
+  const day = date.getDate();
+  const last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(day, last));
+}
+
+/** Shift a calendar date by a year length such as 1.25 (15 months). */
+export function shiftByYears(date, years) {
+  return addMonths(date, Math.round((Number(years) || 0) * 12));
+}
+
+/**
+ * FD view: original invested, estimated current, and amount at the next maturity.
+ * Past maturity + auto-renew rolls into a new term. Without renew, it is paid out to cash.
+ */
+export function fdValue(fd, now = new Date()) {
+  const invested = Number(fd.invested) || 0;
+  const roi = (Number(fd.roi) || 0) / 100;
+  const years = Number(fd.years) > 0 ? Number(fd.years) : 1.25;
+  const auto = !!fd.auto_renew;
+  let principal = Number(fd.principal) > 0 ? Number(fd.principal) : invested;
+  let maturityAmt = Number(fd.maturity_amount) > 0 ? Number(fd.maturity_amount) : principal * (1 + roi) ** years;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let termEnd = parseISODate(fd.maturity_date);
+
+  if (!termEnd) {
+    return { invested, current: principal, maturity: maturityAmt, matures: "", closed: false, payout: 0, status: "active" };
+  }
+
+  let termStart = shiftByYears(termEnd, -years);
+  if (today < termStart) {
+    return { invested, current: principal, maturity: maturityAmt, matures: toISODate(termEnd), closed: false, payout: 0, status: "active" };
+  }
+
+  let guard = 0;
+  while (auto && today >= termEnd && guard < 80) {
+    guard += 1;
+    principal = maturityAmt;
+    termStart = termEnd;
+    termEnd = shiftByYears(termEnd, years);
+    maturityAmt = principal * (1 + roi) ** years;
+  }
+
+  if (today >= termEnd && !auto) {
+    return { invested, current: 0, maturity: maturityAmt, matures: toISODate(termEnd), closed: true, payout: maturityAmt, status: "paid" };
+  }
+
+  const span = termEnd.getTime() - termStart.getTime();
+  const elapsed = Math.min(Math.max(today.getTime() - termStart.getTime(), 0), Math.max(span, 0));
+  const tYears = span > 0 ? (elapsed / span) * years : 0;
+  const current = principal * (1 + roi) ** tYears;
+  const firstMaturity = parseISODate(fd.maturity_date);
+  return {
+    invested,
+    current,
+    maturity: maturityAmt,
+    matures: toISODate(termEnd),
+    closed: false,
+    payout: 0,
+    status: auto && firstMaturity && today >= firstMaturity ? "renewed" : "active",
+  };
 }
 
 export function moneyPicture({
@@ -809,6 +898,7 @@ export function moneyPicture({
   portfolioCost = 0,
   portfolioMarket = 0,
   realised = 0,
+  now = new Date(),
 } = {}) {
   const takeHome = (income || [])
     .filter((r) => incomeKind(r) === "salary")
@@ -816,25 +906,31 @@ export function moneyPicture({
   const dividends = (income || [])
     .filter((r) => incomeKind(r) === "dividend")
     .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const other = (income || [])
+    .filter((r) => incomeKind(r) === "other")
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const pfEmployee = (income || []).reduce((s, r) => s + (Number(r.pf) || 0), 0);
   const pf = pfEmployee * 2;
   const tax = (income || []).reduce((s, r) => s + (Number(r.tax) || 0), 0);
   const ssip = (income || []).reduce((s, r) => s + (Number(r.ssip) || 0), 0);
-  const incoming = takeHome + dividends;
+  const incoming = takeHome + dividends + other;
   const earned = incoming;
   const spentLogged = sumAmounts(expenses);
-  const spent = spentLogged;
-  const fdInvested = (fds || []).reduce((s, r) => s + (Number(r.invested) || 0), 0);
-  const fdPrincipal = (fds || []).reduce((s, r) => s + (Number(r.principal) || 0), 0);
-  const fdMaturity = (fds || []).reduce((s, r) => s + (Number(r.maturity_amount) || 0), 0);
+  const sleeve = fdSleeve(fds, now);
+  const fdInvested = sleeve.cost;
+  const fdPrincipal = sleeve.market;
+  const fdMaturity = sleeve.maturity;
   const invested = (Number(portfolioCost) || 0) + fdInvested;
   const booked = Number(realised) || 0;
-  const cash = incoming - spentLogged - invested + booked;
+  const bank = (accounts || []).reduce((s, r) => s + (Number(r.balance) || 0), 0);
+  const cash = bank + sleeve.maturedCash;
+  const identitySpent = incoming - cash - invested;
+  const spent = Math.max(spentLogged, identitySpent);
   const haveNow = cash + (Number(portfolioMarket) || 0) + fdPrincipal;
-  const gap = 0;
   return {
     takeHome,
     dividends,
+    other,
     incoming,
     pfEmployee,
     pf,
@@ -851,16 +947,18 @@ export function moneyPicture({
     cash,
     saved: cash,
     haveNow,
-    gap,
+    gap: incoming - spentLogged - invested - cash,
     realised: booked,
     since: INCOME_SINCE,
   };
 }
 
-export function fdSleeve(fds = []) {
-  const cost = (fds || []).reduce((s, r) => s + (Number(r.invested) || 0), 0);
-  const market = (fds || []).reduce((s, r) => s + (Number(r.principal) || 0), 0);
-  const maturity = (fds || []).reduce((s, r) => s + (Number(r.maturity_amount) || 0), 0);
+export function fdSleeve(fds = [], now = new Date()) {
+  const snaps = (fds || []).map((fd) => fdValue(fd, now));
+  const open = snaps.filter((s) => !s.closed);
+  const cost = open.reduce((s, r) => s + r.invested, 0);
+  const market = open.reduce((s, r) => s + r.current, 0);
+  const maturity = open.reduce((s, r) => s + r.maturity, 0);
   const gain = market - cost;
   return {
     cost,
@@ -869,7 +967,9 @@ export function fdSleeve(fds = []) {
     gain,
     gainPct: cost ? gain / cost : 0,
     day: 0,
-    count: (fds || []).length,
+    count: open.length,
+    maturedCash: snaps.filter((s) => s.closed).reduce((s, r) => s + r.payout, 0),
+    snaps,
   };
 }
 
@@ -949,7 +1049,7 @@ export function overviewBuckets({
   realised = 0,
   now = new Date(),
 } = {}) {
-  const pic = moneyPicture({ expenses, income, fds, accounts, portfolioCost, realised });
+  const pic = moneyPicture({ expenses, income, fds, accounts, portfolioCost, realised, now });
   const month = flowSplit({ expenses, income, trades, now, grain: "month" });
   const tillPct = splitPercents([pic.saved, pic.invested, pic.spent]);
   return {
