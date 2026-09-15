@@ -6,12 +6,12 @@
   <title>Finance</title>
   <script>
     try {
-      if (localStorage.getItem("finance.theme.v1") === "dark") {
+      if (localStorage.getItem("finance.theme.v2") !== "light") {
         document.documentElement.setAttribute("data-theme", "dark");
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=15" />
+  <link rel="stylesheet" href="css/app.css?v=16" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -253,6 +253,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=14"></script>
+  <script type="module" src="js/app.js?v=15"></script>
 </body>
 </html>

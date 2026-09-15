@@ -1,10 +1,10 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=14";
+import * as Finance from "./finance.js?v=15";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
 const LOCAL_DATA_KEY = "finance.data.v1";
-const THEME_KEY = "finance.theme.v1";
+const THEME_KEY = "finance.theme.v2";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const IDLE_MS = 10 * 60 * 1000;
 
@@ -1503,7 +1503,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 (async function boot() {
-  applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : currentTheme());
+  applyTheme(localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark");
   if (!isRemoteConfigured() && !allowLocalMode()) {
     $("setup-gate").classList.remove("hidden");
     return;
