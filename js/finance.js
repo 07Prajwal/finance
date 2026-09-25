@@ -556,8 +556,10 @@ const RATE_MIN = 0.1;
 const RATE_MAX = 50;
 
 export const CALC_LIMITS = {
-  monthly: { min: 500, max: 200000, step: 500, money: true },
-  lump: { min: 1000, max: 10000000, step: 1000, money: true },
+  monthly: { min: 0, max: 200000, step: 500, money: true },
+  lump: { min: 0, max: 10000000, step: 1000, money: true },
+  swpCorpus: { min: 1000, max: 10000000, step: 1000, money: true },
+  swpMonthly: { min: 500, max: 200000, step: 500, money: true },
   loan: { min: 100000, max: 20000000, step: 50000, money: true },
   years: { min: 1, max: 50, step: 1 },
   tenure: { min: 1, max: 50, step: 1 },
@@ -600,14 +602,43 @@ function badNumber(n) {
 
 export function validateCalcInputs(kind, state) {
   const errors = [];
-  const amountKey = kind === "emi" ? "loan" : kind === "lumpsum" ? "lump" : "monthly";
-  const amountLabel = kind === "emi" ? "Loan amount" : "Amount";
-  const amountLim = CALC_LIMITS[amountKey];
-  const amount = Number(state[amountKey]);
-  if (badNumber(state[amountKey])) errors.push(`${amountLabel} is not a number`);
-  else if (amount <= 0) errors.push(`${amountLabel} cannot be 0 or negative`);
-  else if (amount > amountLim.max) {
-    errors.push(`${amountLabel} cannot be more than ${formatInrGroup(amountLim.max)}`);
+  if (kind === "invest") {
+    const monthly = Number(state.monthly);
+    const lump = Number(state.lump);
+    if (badNumber(state.monthly)) errors.push("Monthly investment is not a number");
+    else if (monthly < 0) errors.push("Monthly investment cannot be negative");
+    else if (monthly > CALC_LIMITS.monthly.max) {
+      errors.push(`Monthly investment cannot be more than ${formatInrGroup(CALC_LIMITS.monthly.max)}`);
+    }
+    if (badNumber(state.lump)) errors.push("Lumpsum is not a number");
+    else if (lump < 0) errors.push("Lumpsum cannot be negative");
+    else if (lump > CALC_LIMITS.lump.max) {
+      errors.push(`Lumpsum cannot be more than ${formatInrGroup(CALC_LIMITS.lump.max)}`);
+    }
+    if (!(monthly > 0) && !(lump > 0)) errors.push("Enter a monthly SIP or a lumpsum");
+  } else if (kind === "swp") {
+    const corpus = Number(state.swpCorpus);
+    const withdrawal = Number(state.swpMonthly);
+    if (badNumber(state.swpCorpus)) errors.push("Investment is not a number");
+    else if (corpus <= 0) errors.push("Investment cannot be 0 or negative");
+    else if (corpus > CALC_LIMITS.swpCorpus.max) {
+      errors.push(`Investment cannot be more than ${formatInrGroup(CALC_LIMITS.swpCorpus.max)}`);
+    }
+    if (badNumber(state.swpMonthly)) errors.push("Monthly withdrawal is not a number");
+    else if (withdrawal <= 0) errors.push("Monthly withdrawal cannot be 0 or negative");
+    else if (withdrawal > CALC_LIMITS.swpMonthly.max) {
+      errors.push(`Monthly withdrawal cannot be more than ${formatInrGroup(CALC_LIMITS.swpMonthly.max)}`);
+    }
+  } else {
+    const amountKey = kind === "emi" ? "loan" : kind === "lumpsum" ? "lump" : "monthly";
+    const amountLabel = kind === "emi" ? "Loan amount" : "Amount";
+    const amountLim = CALC_LIMITS[amountKey];
+    const amount = Number(state[amountKey]);
+    if (badNumber(state[amountKey])) errors.push(`${amountLabel} is not a number`);
+    else if (amount <= 0) errors.push(`${amountLabel} cannot be 0 or negative`);
+    else if (amount > amountLim.max) {
+      errors.push(`${amountLabel} cannot be more than ${formatInrGroup(amountLim.max)}`);
+    }
   }
 
   const yearsKey = kind === "emi" ? "tenure" : "years";
@@ -625,7 +656,7 @@ export function validateCalcInputs(kind, state) {
     errors.push(`${rateLabel} must be between ${RATE_MIN}% and ${RATE_MAX}%`);
   }
 
-  if (kind === "stepup") {
+  if (kind === "stepup" || (kind === "invest" && state.stepUp)) {
     const step = Number(state.step);
     if (badNumber(state.step)) errors.push("Step-up is not a number");
     else if (step < 0) errors.push("Step-up cannot be negative");
@@ -759,6 +790,77 @@ export function computeEmi(loan, loanRate, tenure) {
   };
 }
 
+/** SIP and lumpsum in one pot. Step-up raises only the monthly amount each year. */
+export function computeInvest(monthly, lump, rate, years, stepUp = false, step = 0) {
+  const r = monthlyEffectiveRate(rate);
+  const n = years * 12;
+  let fv = Number(lump) || 0;
+  let inv = Number(lump) || 0;
+  let p = Number(monthly) || 0;
+  const stepPct = stepUp ? Number(step) || 0 : 0;
+  const yearly = [];
+  for (let t = 1; t <= n; t++) {
+    if (stepPct && t > 1 && (t - 1) % 12 === 0) p *= 1 + stepPct / 100;
+    inv += p;
+    fv = (fv + p) * (1 + r);
+    yearlyPush(yearly, t, inv, fv);
+  }
+  return {
+    kind: "invest",
+    hero: fv,
+    invested: inv,
+    returns: fv - inv,
+    yearly,
+    chartInvestedLabel: "Invested",
+    chartReturnsLabel: "Est. returns",
+    kicker: "Total value",
+  };
+}
+
+/**
+ * Withdraw at the end of each month after that month's growth.
+ * Stops early when the corpus cannot fund another full withdrawal.
+ */
+export function computeSwp(corpus, withdrawal, rate, years) {
+  const r = monthlyEffectiveRate(rate);
+  const n = years * 12;
+  let fv = Number(corpus) || 0;
+  let withdrawn = 0;
+  let months = 0;
+  const yearly = [];
+  for (let t = 1; t <= n; t++) {
+    const grown = fv * (1 + r);
+    const take = Math.min(Number(withdrawal) || 0, Math.max(0, grown));
+    fv = Math.max(0, grown - take);
+    withdrawn += take;
+    months = t;
+    const done = fv <= 0.5;
+    if (done) fv = 0;
+    if (t % 12 === 0 || done) {
+      yearly.push({
+        year: Math.ceil(t / 12),
+        invested: withdrawn,
+        returns: fv,
+        value: withdrawn + fv,
+      });
+    }
+    if (done) break;
+  }
+  return {
+    kind: "swp",
+    hero: fv,
+    invested: Number(corpus) || 0,
+    withdrawn,
+    returns: withdrawn + fv - (Number(corpus) || 0),
+    months,
+    depleted: fv === 0,
+    yearly,
+    chartInvestedLabel: "Withdrawn",
+    chartReturnsLabel: "Still invested",
+    kicker: fv === 0 ? "Corpus finished" : "Amount left",
+  };
+}
+
 export function runCalculator(kind, state) {
   const errors = validateCalcInputs(kind, state);
   if (errors.length) return { ok: false, errors };
@@ -767,6 +869,15 @@ export function runCalculator(kind, state) {
     return { ok: true, ...computeStepup(state.monthly, state.rate, state.years, state.step) };
   }
   if (kind === "lumpsum") return { ok: true, ...computeLumpsum(state.lump, state.rate, state.years) };
+  if (kind === "invest") {
+    return {
+      ok: true,
+      ...computeInvest(state.monthly, state.lump, state.rate, state.years, !!state.stepUp, state.step),
+    };
+  }
+  if (kind === "swp") {
+    return { ok: true, ...computeSwp(state.swpCorpus, state.swpMonthly, state.rate, state.years) };
+  }
   if (kind === "emi") return { ok: true, ...computeEmi(state.loan, state.loanRate, state.tenure) };
   return { ok: false, errors: ["Unknown calculator"] };
 }
@@ -1017,9 +1128,25 @@ export function flowSplit({
     .filter((t) => String(t.side || "").toLowerCase() === "buy" && dateInGrain(t.date, grain, now))
     .reduce((s, t) => s + (Number(t.cost_inr) || 0), 0);
   const leftover = earned - spent - invested;
-  const saved = leftover > 0 ? leftover : 0;
-  const [incomingPct, investedPct, spentPct] = splitPercents([earned, invested, spent]);
-  const savedPct = incomingPct;
+  const saved = leftover;
+  const have = leftover > 0 ? leftover : 0;
+  let savedPct;
+  let investedPct;
+  let spentPct;
+  if (earned > 0) {
+    const raw = [saved, invested, spent].map((n) => (n / earned) * 100);
+    const rounded = raw.map((n) => Math.round(n));
+    let drift = 100 - rounded.reduce((s, n) => s + n, 0);
+    if (drift) {
+      let i = 0;
+      for (let k = 1; k < raw.length; k += 1) if (Math.abs(raw[k]) > Math.abs(raw[i])) i = k;
+      rounded[i] += drift;
+    }
+    [savedPct, investedPct, spentPct] = rounded;
+  } else {
+    [savedPct, investedPct, spentPct] = splitPercents([Math.max(0, saved), invested, spent]);
+  }
+  const incomingPct = earned > 0 ? 100 : 0;
   return {
     grain,
     earned,
@@ -1028,7 +1155,7 @@ export function flowSplit({
     spent,
     invested,
     saved,
-    have: saved,
+    have,
     leftover,
     incomingPct,
     savedPct,
@@ -1064,9 +1191,11 @@ export function overviewBuckets({
     },
     month: {
       primary: month.incoming,
+      saved: month.saved,
       invested: month.invested,
       spent: month.spent,
       primaryPct: month.incomingPct,
+      savedPct: month.savedPct,
       investedPct: month.investedPct,
       spentPct: month.spentPct,
       earned: month.earned,

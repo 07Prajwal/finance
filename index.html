@@ -11,7 +11,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=22" />
+  <link rel="stylesheet" href="css/app.css?v=23" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -261,14 +261,13 @@
       <section id="calculators" class="page">
         <div class="hero">
           <div class="kicker">Planning tools</div>
-          <h1>SIP, step-up, lumpsum, EMI.</h1>
-          <p class="lead">Type a number or drag the slider. Estimates only. SIP and step-up treat expected return as annualized, same as Groww.</p>
+          <h1>SIP, lumpsum, SWP, EMI.</h1>
+          <p class="lead">Monthly SIP and a one-time lumpsum in one plan. Step-up is optional. SWP shows what is left after a monthly withdrawal.</p>
         </div>
         <div class="wrap section" style="padding-top:0">
           <div class="tabs" id="calc-tabs">
-            <button class="on" data-calc="sip" type="button">SIP</button>
-            <button data-calc="stepup" type="button">Step-up SIP</button>
-            <button data-calc="lumpsum" type="button">Lumpsum</button>
+            <button class="on" data-calc="invest" type="button">SIP + Lumpsum</button>
+            <button data-calc="swp" type="button">SWP</button>
             <button data-calc="emi" type="button">EMI</button>
           </div>
           <div class="calc-layout">
@@ -290,6 +289,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=21"></script>
+  <script type="module" src="js/app.js?v=22"></script>
 </body>
 </html>

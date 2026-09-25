@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=21";
+import * as Finance from "./finance.js?v=22";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -37,8 +37,20 @@ let pfShowSold = false;
 let pfPlatform = "";
 let idleTimer = 0;
 let idleSaveTimer = 0;
-let calcKind = "sip";
-let calcState = { monthly: 10000, rate: 12, years: 10, step: 10, lump: 100000, loan: 2500000, loanRate: 8.5, tenure: 20 };
+let calcKind = "invest";
+let calcState = {
+  monthly: 10000,
+  rate: 12,
+  years: 10,
+  step: 10,
+  stepUp: false,
+  lump: 0,
+  swpCorpus: 1000000,
+  swpMonthly: 10000,
+  loan: 2500000,
+  loanRate: 8.5,
+  tenure: 20,
+};
 let calcTimer = 0;
 let wizard = null;
 let tradeForm = null;
@@ -646,7 +658,7 @@ function renderHome() {
   });
   $("home-summary").innerHTML =
     periodCardHTML("Till now", ["Current balance", "Invested", "Spent"], buckets.till) +
-    periodCardHTML("This month", ["Incoming", "Invested", "Spent"], buckets.month);
+    monthCardHTML(buckets.month);
 
   const investedAll = p.total.cost + fd.cost;
   const investGain = p.total.gain + fd.gain;
@@ -664,26 +676,57 @@ function renderHome() {
   doughnut("home-spend-chart", cats.length ? cats : ["No spend yet"], cats.length ? cats.map((c) => s.byCat[c]) : [1]);
 }
 
-function periodCardHTML(title, labels, b) {
-  const segs = [
-    { key: "saved", pct: b.primaryPct },
-    { key: "invested", pct: b.investedPct },
-    { key: "spent", pct: b.spentPct },
-  ].filter((row) => row.pct > 0);
-  const bar = segs.length
-    ? segs.map((row) => `<span class="seg ${row.key}" style="width:${row.pct}%"></span>`).join("")
-    : "";
-  const stat = (label, amount, pct) => `<div class="period-stat">
+function periodStat(label, amount, pct) {
+  return `<div class="period-stat">
     <span class="label">${label}</span>
     <span class="value">${rupee(amount)}</span>
     <span class="pct">${pct}%</span>
   </div>`;
+}
+
+function splitBar(segs) {
+  const rows = segs.filter((row) => row.pct > 0);
+  const sum = rows.reduce((s, row) => s + row.pct, 0);
+  if (!rows.length || !(sum > 0)) return "";
+  return rows.map((row) => {
+    const width = sum > 100 ? (row.pct / sum) * 100 : row.pct;
+    return `<span class="seg ${row.key}" style="width:${width}%"></span>`;
+  }).join("");
+}
+
+function periodCardHTML(title, labels, b) {
+  const bar = splitBar([
+    { key: "saved", pct: b.primaryPct },
+    { key: "invested", pct: b.investedPct },
+    { key: "spent", pct: b.spentPct },
+  ]);
   return `<article class="period-card">
     <h2>${esc(title)}</h2>
     <div class="period-stats">
-      ${stat(labels[0], b.primary, b.primaryPct)}
-      ${stat(labels[1], b.invested, b.investedPct)}
-      ${stat(labels[2], b.spent, b.spentPct)}
+      ${periodStat(labels[0], b.primary, b.primaryPct)}
+      ${periodStat(labels[1], b.invested, b.investedPct)}
+      ${periodStat(labels[2], b.spent, b.spentPct)}
+    </div>
+    <div class="split-bar">${bar}</div>
+  </article>`;
+}
+
+function monthCardHTML(b) {
+  const bar = splitBar([
+    { key: "saved", pct: b.savedPct },
+    { key: "invested", pct: b.investedPct },
+    { key: "spent", pct: b.spentPct },
+  ]);
+  return `<article class="period-card">
+    <h2>This month</h2>
+    <div class="period-headline">
+      <span class="label">Incoming</span>
+      <span class="value">${rupee(b.primary)}</span>
+    </div>
+    <div class="period-stats">
+      ${periodStat("Saved", b.saved, b.savedPct)}
+      ${periodStat("Invested", b.invested, b.investedPct)}
+      ${periodStat("Spent", b.spent, b.spentPct)}
     </div>
     <div class="split-bar">${bar}</div>
   </article>`;
@@ -1119,19 +1162,27 @@ function sliderRow(key, label, suffix) {
 
 function renderCalcControls() {
   const isEmi = calcKind === "emi";
-  const isLump = calcKind === "lumpsum";
-  const isStep = calcKind === "stepup";
+  const isSwp = calcKind === "swp";
+  const isInvest = calcKind === "invest";
   $("calc-controls").innerHTML = `
-    ${!isEmi && !isLump ? sliderRow("monthly", "Monthly investment", "₹") : ""}
-    ${isLump ? sliderRow("lump", "Total investment", "₹") : ""}
+    ${isInvest ? sliderRow("monthly", "Monthly SIP", "₹") : ""}
+    ${isInvest ? sliderRow("lump", "Lumpsum", "₹") : ""}
+    ${isSwp ? sliderRow("swpCorpus", "Total investment", "₹") : ""}
+    ${isSwp ? sliderRow("swpMonthly", "Monthly withdrawal", "₹") : ""}
     ${isEmi ? sliderRow("loan", "Loan amount", "₹") : ""}
     ${isEmi ? sliderRow("loanRate", "Interest rate (p.a.)", "%") : sliderRow("rate", "Expected return (p.a.)", "%")}
     ${isEmi ? sliderRow("tenure", "Tenure", "yr") : sliderRow("years", "Time period", "yr")}
-    ${isStep ? sliderRow("step", "Annual step-up", "%") : ""}
+    ${isInvest ? `<label class="check-row"><input type="checkbox" id="calc-stepup"${calcState.stepUp ? " checked" : ""} /> Step-up each year</label>` : ""}
+    ${isInvest && calcState.stepUp ? sliderRow("step", "Annual step-up", "%") : ""}
     <p class="tiny">Figures are estimates. Actual returns vary with markets and tax.</p>
     <p class="field-error" id="calc-errors"></p>
   `;
   $("calc-controls").oninput = (e) => {
+    if (e.target.id === "calc-stepup") {
+      calcState.stepUp = e.target.checked;
+      renderCalc();
+      return;
+    }
     const inp = e.target.closest("[data-key]");
     if (!inp) return;
     const key = inp.dataset.key;
@@ -1182,6 +1233,11 @@ function renderCalcResults() {
     $("calc-stats").innerHTML =
       statPair("Principal", rupee(result.principal), "Total interest", rupee(result.interest)) +
       statPair("Total payable", rupee(result.total), "Tenure", `${result.months} months`);
+  } else if (result.kind === "swp") {
+    $("calc-hero").textContent = rupee(result.hero);
+    $("calc-stats").innerHTML =
+      statPair("Withdrawn", rupee(result.withdrawn), "Invested", rupee(result.invested)) +
+      statPair("Est. gain", rupee(result.returns), result.depleted ? "Lasted" : "Tenure", `${result.months} months`);
   } else {
     $("calc-hero").textContent = rupee(result.hero);
     $("calc-stats").innerHTML = statPair("Invested amount", rupee(result.invested), "Est. returns", rupee(result.returns));

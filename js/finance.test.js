@@ -8,8 +8,10 @@ import {
   portfolioCashflows,
   clampCalc,
   computeEmi,
+  computeInvest,
   computeLumpsum,
   computeSip,
+  computeSwp,
   computeStepup,
   holdingTradeDates,
   monthlyEffectiveRate,
@@ -193,6 +195,46 @@ describe("calculators", () => {
     assert.ok(stepped.hero > plain.hero);
     close(stepped.invested, 10000 * 12 + 11000 * 12, 0.01);
     close(computeStepup(24000, 10, 10, 10).returns, 2_563_396, 1);
+  });
+
+  it("combines SIP and lumpsum, and step-up only raises the monthly amount", () => {
+    const sip = computeSip(10000, 12, 10);
+    const together = computeInvest(10000, 0, 12, 10, false, 10);
+    close(together.hero, sip.hero, 0.5);
+    close(together.invested, sip.invested, 0.01);
+    const lump = computeLumpsum(100000, 12, 10);
+    const onlyLump = computeInvest(0, 100000, 12, 10, false, 0);
+    close(onlyLump.hero, lump.hero, 0.5);
+    const stepped = computeStepup(10000, 12, 2, 10);
+    const withStep = computeInvest(10000, 0, 12, 2, true, 10);
+    close(withStep.invested, stepped.invested, 0.01);
+    close(withStep.hero, stepped.hero, 0.5);
+    const both = runCalculator("invest", { monthly: 10000, lump: 50000, rate: 12, years: 10, stepUp: false, step: 10 });
+    assert.equal(both.ok, true);
+    assert.ok(both.invested > sip.invested);
+    assert.ok(validateCalcInputs("invest", { monthly: 0, lump: 0, rate: 12, years: 10 }).some((e) => /SIP or a lumpsum/i.test(e)));
+  });
+
+  it("SWP withdraws after each month of growth and stops when the corpus is gone", () => {
+    const done = computeSwp(120000, 10000, 0, 2);
+    close(done.hero, 0, 0.01);
+    close(done.withdrawn, 120000, 0.01);
+    assert.equal(done.months, 12);
+    assert.equal(done.depleted, true);
+    const r = monthlyEffectiveRate(12);
+    let fv = 500000;
+    let withdrawn = 0;
+    for (let t = 1; t <= 12; t++) {
+      fv = fv * (1 + r) - 5000;
+      withdrawn += 5000;
+    }
+    const swp = computeSwp(500000, 5000, 12, 1);
+    close(swp.hero, fv, 0.5);
+    close(swp.withdrawn, withdrawn, 0.01);
+    assert.equal(swp.depleted, false);
+    const ran = runCalculator("swp", { swpCorpus: 1000000, swpMonthly: 10000, rate: 8, years: 10 });
+    assert.equal(ran.ok, true);
+    assert.equal(ran.kicker === "Amount left" || ran.kicker === "Corpus finished", true);
   });
 
   it("lumpsum compounds annually", () => {
@@ -613,6 +655,8 @@ describe("income picture", () => {
     close(split.spent, 20000, 0.01);
     close(split.invested, 30000, 0.01);
     close(split.have, 50000, 0.01);
+    close(split.saved, 50000, 0.01);
+    assert.equal(split.savedPct + split.investedPct + split.spentPct, 100);
     assert.deepEqual(splitPercents([50, 30, 20]), [50, 30, 20]);
     const month = flowSplit({
       now,
