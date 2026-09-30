@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders, json, sha256Hex, timingSafeEqual } from "../_shared/auth.ts";
 
-const TYPES = ["Our Expense", "Home Expense", "My Expense"];
-const CATS = ["Food", "Quick Delivery", "Travel", "Shopping", "Medicine", "Other"];
+const TYPES = ["Our Expense", "Home Expense", "My Expense", "Sync Expense"];
+const CATS = ["Food", "Groceries", "Quick Delivery", "Travel", "Shopping", "Medicine", "Other"];
 const ACCOUNTS = ["UPI", "Cash", "Card"];
 
 function service() {
@@ -53,7 +53,10 @@ function pick(value, allowed) {
     our: "Our Expense",
     home: "Home Expense",
     my: "My Expense",
+    sync: "Sync Expense",
+    "sync expense": "Sync Expense",
     food: "Food",
+    groceries: "Groceries",
     delivery: "Quick Delivery",
     "quick delivery": "Quick Delivery",
     travel: "Travel",

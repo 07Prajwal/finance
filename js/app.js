@@ -12,8 +12,8 @@ const NUM = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 const PALETTE_LIGHT = ["#0071E3", "#FF9F0A", "#30D158", "#FF375F", "#BF5AF2", "#64D2FF", "#FFD60A", "#AC8E68"];
 const PALETTE_DARK = ["#0A84FF", "#FF9F0A", "#32D74B", "#FF453A", "#BF5AF2", "#64D2FF", "#FFD60A", "#FF6482"];
 
-const EXPENSE_TYPES = ["Our Expense", "Home Expense", "My Expense"];
-const EXPENSE_CATS = ["Food", "Quick Delivery", "Travel", "Shopping", "Medicine", "Other"];
+const EXPENSE_TYPES = ["Our Expense", "Home Expense", "My Expense", "Sync Expense"];
+const EXPENSE_CATS = ["Food", "Groceries", "Quick Delivery", "Travel", "Shopping", "Medicine", "Other"];
 const EXPENSE_ACCOUNTS = ["UPI", "Cash", "Card"];
 const WIZARD_STEPS = ["date", "amount", "type", "category", "account", "notes", "confirm"];
 
