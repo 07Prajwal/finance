@@ -3,7 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-title" content="Finance" />
   <title>Finance</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
   <script>
     try {
       if (localStorage.getItem("finance.theme.v2") !== "light") {
@@ -11,11 +17,19 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=23" />
+  <link rel="stylesheet" href="css/app.css?v=24" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
-<body>
+<body class="is-guest">
+  <script>
+    try {
+      const raw = localStorage.getItem("finance.session.v1");
+      const s = raw ? JSON.parse(raw) : null;
+      const idleOk = !s?.lastActive || Date.now() - s.lastActive < 10 * 60 * 1000;
+      if (s?.token && s.exp > Date.now() && idleOk) document.body.classList.remove("is-guest");
+    } catch (e) { /* ignore */ }
+  </script>
   <div id="setup-gate" class="setup-gate hidden">
     <div class="login-card">
       <h1>Almost ready</h1>
@@ -23,15 +37,17 @@
     </div>
   </div>
 
-  <div id="login-gate" class="login-gate">
+  <div id="login-gate" class="login-gate hidden">
     <div class="login-card">
       <div class="kicker">Finance</div>
       <h1>Welcome back.</h1>
       <p>Enter the password to open the tracker.</p>
       <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark</button>
-      <form id="login-form">
-        <input type="password" name="password" autocomplete="current-password" required placeholder="Password" />
+      <form id="login-form" action="#" autocomplete="on">
+        <input class="login-user" type="text" name="username" autocomplete="username" value="finance" tabindex="-1" aria-hidden="true" />
+        <input id="login-password" type="password" name="password" autocomplete="current-password" enterkeyhint="go" placeholder="Password" />
         <button class="btn" type="submit">Continue</button>
+        <button class="btn secondary" type="button" id="login-dismiss">Not now</button>
         <p id="login-error" class="status bad hidden"></p>
       </form>
     </div>
@@ -39,22 +55,23 @@
 
   <div id="local-banner" class="banner hidden">Data on this device only until Supabase is connected — iPhone and Mac will not share logs yet.</div>
 
-  <div id="app-shell" class="app-shell locked">
+  <div id="app-shell" class="app-shell">
     <nav class="nav">
       <div class="nav-inner">
-        <a class="wordmark" href="#home">Finance</a>
+        <a class="wordmark" href="#calculators">Finance</a>
         <div class="nav-links">
-          <a href="#home" data-nav="home">Overview</a>
-          <a href="#expenses" data-nav="expenses">Expenses</a>
-          <a href="#portfolio" data-nav="portfolio">Portfolio</a>
-          <a href="#income" data-nav="income">Income</a>
+          <a href="#home" data-nav="home" class="auth-only">Overview</a>
+          <a href="#expenses" data-nav="expenses" class="auth-only">Expenses</a>
+          <a href="#portfolio" data-nav="portfolio" class="auth-only">Portfolio</a>
+          <a href="#income" data-nav="income" class="auth-only">Income</a>
           <a href="#calculators" data-nav="calculators">Calculators</a>
           <button class="nav-cta owner-only" type="button" id="nav-add-expense">Log expense</button>
         </div>
         <div class="nav-meta">
-          <span class="role-chip" id="role-chip"></span>
+          <span class="role-chip auth-only" id="role-chip"></span>
           <button class="theme-toggle" type="button" id="theme-toggle" data-theme-toggle aria-pressed="false">Dark</button>
-          <button class="sign-out" type="button" id="sign-out">Sign out</button>
+          <button class="nav-cta guest-only" type="button" id="nav-login">Log in</button>
+          <button class="sign-out auth-only" type="button" id="sign-out">Sign out</button>
         </div>
       </div>
     </nav>
@@ -289,6 +306,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=23"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 </body>
 </html>

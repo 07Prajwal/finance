@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=22";
+import * as Finance from "./finance.js?v=23";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -37,6 +37,7 @@ let pfShowSold = false;
 let pfPlatform = "";
 let idleTimer = 0;
 let idleSaveTimer = 0;
+let loginBusy = false;
 let calcKind = "invest";
 let calcState = {
   monthly: 10000,
@@ -392,14 +393,23 @@ function loginLocal(password) {
 }
 
 function setRoleChrome() {
+  const authed = !!session;
   document.body.classList.toggle("is-owner", isOwner());
-  $("role-chip").textContent = isOwner() ? "Owner" : "Viewer";
+  document.body.classList.toggle("is-guest", !authed);
+  document.body.classList.toggle("is-auth", authed);
+  const chip = $("role-chip");
+  if (chip) chip.textContent = !authed ? "" : isOwner() ? "Owner" : "Viewer";
+  const mark = document.querySelector(".wordmark");
+  if (mark) mark.setAttribute("href", authed ? "#home" : "#calculators");
 }
+
+const PUBLIC_PAGES = new Set(["calculators"]);
 
 function currentPageId() {
   let id = (location.hash || "#home").replace(/^#/, "") || "home";
   if (id.startsWith("/")) id = id.slice(1);
-  if (!$(id) || !$(id).classList.contains("page")) id = "home";
+  if (!$(id) || !$(id).classList.contains("page")) id = session ? "home" : "calculators";
+  if (!session && !PUBLIC_PAGES.has(id)) id = "calculators";
   return id;
 }
 
@@ -415,19 +425,42 @@ function unlockApp() {
   $("local-banner").classList.toggle("hidden", isRemoteConfigured());
   setRoleChrome();
   touchSession();
+  const input = $("login-password");
+  if (input) input.value = "";
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   if (!location.hash || location.hash === "#") location.hash = "home";
   activatePage(currentPageId());
 }
 
-function lockApp() {
+function showLogin(message) {
+  $("setup-gate").classList.add("hidden");
+  $("login-gate").classList.remove("hidden");
+  showLoginError(message || "");
+  const input = $("login-password");
+  if (input) input.focus();
+}
+
+function enterGuest() {
   session = null;
   clearTimeout(idleTimer);
   clearTimeout(idleSaveTimer);
   localStorage.removeItem(SESSION_KEY);
-  $("app-shell").classList.add("locked");
-  $("local-banner").classList.add("hidden");
   document.body.classList.remove("is-owner");
+  $("app-shell").classList.remove("locked");
+  $("local-banner").classList.add("hidden");
+  $("login-gate").classList.add("hidden");
+  $("setup-gate").classList.add("hidden");
   if ($("overlay") && !$("overlay").classList.contains("hidden")) closeOverlay();
+  setRoleChrome();
+  if (location.hash !== "#calculators") location.hash = "calculators";
+  else {
+    activatePage("calculators");
+    renderCalc();
+  }
+}
+
+function lockApp() {
+  enterGuest();
 }
 
 function touchSession() {
@@ -451,8 +484,7 @@ function scheduleIdleLogout() {
       return;
     }
     lockApp();
-    $("login-gate").classList.remove("hidden");
-    showLoginError("Signed out after 10 minutes idle.");
+    showLogin("Signed out after 10 minutes idle.");
   }, wait);
 }
 
@@ -488,8 +520,9 @@ function chartPrimary() { return cssVar("--primary", "#0071E3"); }
 
 function showLoginError(msg) {
   const el = $("login-error");
-  el.textContent = msg;
-  el.classList.toggle("hidden", !msg);
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = msg ? "status bad" : "status bad hidden";
 }
 
 async function afterLogin() {
@@ -508,14 +541,18 @@ async function afterLogin() {
 
 function showPage() {
   const id = currentPageId();
+  if (!session && location.hash && location.hash !== "#calculators" && location.hash !== "#") {
+    location.hash = "calculators";
+    return;
+  }
   activatePage(id);
+  if (id === "calculators") renderCalc();
   if (!session) return;
   try {
     if (id === "home") renderHome();
     if (id === "expenses") renderExpenses();
     if (id === "income") renderIncome();
     if (id === "portfolio") renderPortfolio();
-    if (id === "calculators") renderCalc();
   } catch (err) {
     const status = $("quote-status") || $("expense-status");
     if (status) {
@@ -1733,21 +1770,66 @@ async function refreshQuotes() {
   }
 }
 
-$("login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
+async function submitLogin(password) {
+  if (loginBusy) return;
+  if ($("login-gate").classList.contains("hidden")) return;
+  const value = String(password || "");
+  if (!value) {
+    showLoginError("Enter the password");
+    return;
+  }
+  loginBusy = true;
+  const btn = $("login-form")?.querySelector("button[type=submit]");
+  if (btn) btn.disabled = true;
   showLoginError("");
-  const password = e.target.password.value;
+  const status = $("login-error");
+  if (status) {
+    status.textContent = "Loading…";
+    status.classList.remove("hidden");
+    status.className = "status";
+  }
   try {
-    session = isRemoteConfigured() ? await loginRemote(password) : loginLocal(password);
+    session = isRemoteConfigured() ? await loginRemote(value) : loginLocal(value);
     await afterLogin();
   } catch (err) {
+    session = null;
     showLoginError(err.message || "Could not sign in");
+  } finally {
+    loginBusy = false;
+    if (btn) btn.disabled = false;
   }
+}
+
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (loginBusy) return;
+  const input = e.target.elements.password;
+  let password = input.value;
+  if (!password) {
+    loginBusy = true;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    password = input.value;
+    loginBusy = false;
+  }
+  await submitLogin(password);
+});
+$("login-password").addEventListener("change", () => {
+  const value = $("login-password").value;
+  if (!value) return;
+  setTimeout(() => {
+    if ($("login-gate").classList.contains("hidden")) return;
+    submitLogin(value);
+  }, 0);
+});
+$("nav-login").addEventListener("click", () => showLogin(""));
+$("login-dismiss").addEventListener("click", () => {
+  $("login-gate").classList.add("hidden");
+  showLoginError("");
+  if (!session) enterGuest();
 });
 
 $("sign-out").addEventListener("click", () => {
-  lockApp();
-  $("login-gate").classList.remove("hidden");
+  enterGuest();
   showLoginError("");
 });
 document.addEventListener("click", (e) => {
@@ -2000,8 +2082,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible" || !session) return;
   if (Date.now() - (session.lastActive || 0) > IDLE_MS) {
     lockApp();
-    $("login-gate").classList.remove("hidden");
-    showLoginError("Signed out after 10 minutes idle.");
+    showLogin("Signed out after 10 minutes idle.");
     return;
   }
   touchSession();
@@ -2023,8 +2104,9 @@ document.addEventListener("visibilitychange", () => {
       await afterLogin();
       return;
     } catch {
-      lockApp();
+      session = null;
+      localStorage.removeItem(SESSION_KEY);
     }
   }
-  $("login-gate").classList.remove("hidden");
+  enterGuest();
 })();

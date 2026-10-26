@@ -669,6 +669,20 @@ describe("income picture", () => {
     close(month.spent, 10000, 0.01);
     close(month.invested, 0, 0.01);
     close(month.have, 0, 0.01);
+    close(month.saved, 0, 0.01);
     assert.equal(month.spentPct, 100);
+  });
+  it("floors saved at zero when spend and buys exceed incoming", () => {
+    const split = flowSplit({
+      now: new Date(2026, 8, 15),
+      grain: "month",
+      income: [{ date: "2026-09-24", amount: 10000 }],
+      expenses: [{ date: "2026-09-02", amount: 8000 }],
+      trades: [{ side: "buy", date: "2026-09-03", cost_inr: 5000 }],
+    });
+    close(split.saved, 0, 0.01);
+    assert.equal(split.savedPct, 0);
+    assert.ok(split.investedPct > 0);
+    assert.ok(split.spentPct > 0);
   });
 });

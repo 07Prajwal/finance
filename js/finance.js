@@ -1128,12 +1128,12 @@ export function flowSplit({
     .filter((t) => String(t.side || "").toLowerCase() === "buy" && dateInGrain(t.date, grain, now))
     .reduce((s, t) => s + (Number(t.cost_inr) || 0), 0);
   const leftover = earned - spent - invested;
-  const saved = leftover;
-  const have = leftover > 0 ? leftover : 0;
+  const saved = Math.max(0, leftover);
+  const have = saved;
   let savedPct;
   let investedPct;
   let spentPct;
-  if (earned > 0) {
+  if (earned > 0 && leftover >= 0) {
     const raw = [saved, invested, spent].map((n) => (n / earned) * 100);
     const rounded = raw.map((n) => Math.round(n));
     let drift = 100 - rounded.reduce((s, n) => s + n, 0);
@@ -1143,8 +1143,12 @@ export function flowSplit({
       rounded[i] += drift;
     }
     [savedPct, investedPct, spentPct] = rounded;
+  } else if (earned > 0) {
+    savedPct = 0;
+    investedPct = Math.round((invested / earned) * 100);
+    spentPct = Math.round((spent / earned) * 100);
   } else {
-    [savedPct, investedPct, spentPct] = splitPercents([Math.max(0, saved), invested, spent]);
+    [savedPct, investedPct, spentPct] = splitPercents([saved, invested, spent]);
   }
   const incomingPct = earned > 0 ? 100 : 0;
   return {
