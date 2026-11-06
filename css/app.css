@@ -422,7 +422,7 @@ tr.sold-row { cursor: pointer; }
 
 .calc-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .amort-wrap { max-height: min(70vh, 640px); overflow: auto; margin-top: 12px; }
-.amort-table { min-width: 720px; table-layout: fixed; }
+.amort-table { min-width: 820px; table-layout: fixed; }
 .amort-table col.c-month { width: 72px; }
 .amort-table col.c-year { width: 64px; }
 .amort-table thead th {
@@ -442,6 +442,8 @@ tr.sold-row { cursor: pointer; }
   font-variant-numeric: tabular-nums;
 }
 .amort-table input:disabled { opacity: 0.35; }
+.amort-table td.amort-total { font-weight: 600; }
+.amort-table tr.amort-early td.amort-total { color: var(--primary); }
 .amort-table tr.amort-saved td { color: var(--muted); }
 .amort-table tr.amort-saved td:nth-child(3) { color: var(--gain); font-weight: 600; }
 .amort-bulk { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }

@@ -21,7 +21,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=27" />
+  <link rel="stylesheet" href="css/app.css?v=29" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -303,11 +303,11 @@
           <div class="card hidden" id="calc-amort-card" style="margin-top:20px">
             <div class="chart-head">
               <h3>Your amortization details</h3>
-              <button class="btn secondary sm" type="button" id="calc-amort-clear" disabled>Clear extras</button>
+              <button class="btn secondary sm" type="button" id="calc-amort-clear" disabled>Clear early payments</button>
             </div>
-            <p class="tiny" id="calc-amort-note">Scheduled EMI stays the same. Type extra in any month; that amount goes to principal and the rest of the loan is recalculated.</p>
+            <p class="tiny" id="calc-amort-note">Scheduled EMI stays the same. Type an amount under Pay early in any month; it goes straight to principal, you pay less interest, and the rest of the loan is recalculated. Paid this month shows EMI plus what you pay early.</p>
             <div class="amort-bulk">
-              <label class="field">Extra per month (₹)
+              <label class="field">Pay early per month (₹)
                 <input type="text" inputmode="decimal" id="bulk-amount" placeholder="e.g. 5,000" />
               </label>
               <label class="field">From month
@@ -332,6 +332,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=27"></script>
+  <script type="module" src="js/app.js?v=29"></script>
 </body>
 </html>

@@ -1278,8 +1278,9 @@ function renderAmortTable(result) {
         <td>Y${Math.ceil(m / 12)}</td>
         <td class="num"></td>
         <td class="num amort-extra">
-          <input type="text" inputmode="decimal" data-emi-extra="${m}" value="${esc(extraInputValue(m))}" placeholder="0" aria-label="Extra in month ${m}" />
+          <input type="text" inputmode="decimal" data-emi-extra="${m}" value="${esc(extraInputValue(m))}" placeholder="0" aria-label="Pay early in month ${m}" />
         </td>
+        <td class="num amort-total"></td>
         <td class="num"></td>
         <td class="num"></td>
         <td class="num"></td>
@@ -1287,11 +1288,11 @@ function renderAmortTable(result) {
     }
     host.innerHTML = `<table class="amort-table" data-months="${total}">
       <colgroup>
-        <col class="c-month" /><col class="c-year" /><col /><col /><col /><col /><col />
+        <col class="c-month" /><col class="c-year" /><col /><col /><col /><col /><col /><col />
       </colgroup>
       <thead>
         <tr>
-          <th>Month</th><th>Year</th><th class="num">EMI</th><th class="num">Extra</th>
+          <th>Month</th><th>Year</th><th class="num">EMI</th><th class="num">Pay early</th><th class="num">Paid this month</th>
           <th class="num">Interest</th><th class="num">Principal</th><th class="num">Balance</th>
         </tr>
       </thead>
@@ -1307,16 +1308,20 @@ function renderAmortTable(result) {
     if (row) {
       trs[i].classList.remove("amort-saved");
       cells[2].textContent = rupee(row.emi, 0);
-      cells[4].textContent = rupee(row.interest, 0);
-      cells[5].textContent = rupee(row.principal, 0);
-      cells[6].textContent = rupee(row.closing, 0);
+      cells[4].textContent = rupee(row.emi + row.extra, 0);
+      cells[5].textContent = rupee(row.interest, 0);
+      cells[6].textContent = rupee(row.principal, 0);
+      cells[7].textContent = rupee(row.closing, 0);
+      trs[i].classList.toggle("amort-early", row.extra > 0);
       if (input) input.disabled = false;
     } else {
       trs[i].classList.add("amort-saved");
+      trs[i].classList.remove("amort-early");
       cells[2].textContent = "Saved";
       cells[4].textContent = "—";
       cells[5].textContent = "—";
-      cells[6].textContent = rupee(0, 0);
+      cells[6].textContent = "—";
+      cells[7].textContent = rupee(0, 0);
       if (input) input.disabled = true;
     }
   }
@@ -1368,7 +1373,7 @@ function renderCalcResults() {
       statPair("Principal", rupee(result.principal), "Total interest", rupee(result.interest)) +
       statPair("Total payable", rupee(result.total), "Tenure", tenureLabel) +
       (result.extra > 0
-        ? statPair("Extra paid", rupee(result.extra), "Interest saved", rupee(result.interestSaved))
+        ? statPair("Paid early", rupee(result.extra), "Interest saved", rupee(result.interestSaved))
         : "");
     renderAmortTable(result);
   } else if (result.kind === "swp") {
@@ -2100,7 +2105,7 @@ $("bulk-apply").addEventListener("click", () => {
   const amount = Finance.parseInrInput($("bulk-amount").value);
   const from = Math.floor(Number($("bulk-from").value) || 1);
   const to = Math.floor(Number($("bulk-to").value) || total);
-  if (!Number.isFinite(amount) || amount <= 0) { err.textContent = "Enter an extra amount above 0."; return; }
+  if (!Number.isFinite(amount) || amount <= 0) { err.textContent = "Enter a pay-early amount above 0."; return; }
   if (from < 1 || to > total || from > to) { err.textContent = `Pick a range between month 1 and ${total}.`; return; }
   err.textContent = "";
   if (!calcState.emiExtras) calcState.emiExtras = {};
