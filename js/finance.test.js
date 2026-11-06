@@ -261,6 +261,23 @@ describe("calculators", () => {
     assert.equal(series.investedLabel, "Principal repaid");
     assert.equal(series.returnsLabel, "Interest paid");
     assert.notEqual(series.returnsLabel, "Est. returns");
+    assert.equal(emi.schedule.length, 240);
+    close(emi.schedule[0].opening, loan, 0.01);
+    close(emi.schedule.at(-1).closing, 0, 1);
+  });
+
+  it("EMI extra in a month goes to principal and shortens the remaining loan", () => {
+    const base = computeEmi(120000, 12, 1);
+    const extra = computeEmi(120000, 12, 1, { 1: 20000 });
+    assert.ok(extra.months < base.months);
+    assert.ok(extra.interest < base.interest);
+    close(extra.schedule[0].extra, 20000, 0.01);
+    assert.ok(extra.schedule[0].principal > base.schedule[0].principal);
+    close(extra.schedule.at(-1).closing, 0, 1);
+    assert.equal(extra.monthsSaved, base.months - extra.months);
+    const huge = computeEmi(50000, 12, 2, { 1: 10_000_000 });
+    assert.equal(huge.months, 1);
+    close(huge.schedule[0].closing, 0, 1);
   });
 
   it("rejects 0 years, negative amount, NaN, and out-of-range rates", () => {

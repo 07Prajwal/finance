@@ -1,5 +1,5 @@
 import { allowLocalMode, config, isRemoteConfigured } from "./config.js";
-import * as Finance from "./finance.js?v=23";
+import * as Finance from "./finance.js?v=24";
 import { SEED_EXPENSES, SEED_PORTFOLIO } from "./seed.js";
 
 const SESSION_KEY = "finance.session.v1";
@@ -51,6 +51,7 @@ let calcState = {
   loan: 2500000,
   loanRate: 8.5,
   tenure: 20,
+  emiExtras: {},
 };
 let calcTimer = 0;
 let wizard = null;
@@ -1252,6 +1253,65 @@ function renderCalcControls() {
   };
 }
 
+function extraInputValue(month) {
+  const n = Number(calcState.emiExtras?.[month]) || 0;
+  return n > 0 ? Finance.formatInrGroup(n) : "";
+}
+
+function renderAmortTable(result) {
+  const card = $("calc-amort-card");
+  const host = $("calc-amort");
+  if (!card || !host) return;
+  if (calcKind !== "emi" || !result?.schedule?.length) {
+    card.classList.add("hidden");
+    host.innerHTML = "";
+    return;
+  }
+  card.classList.remove("hidden");
+  const focused = document.activeElement;
+  const focusMonth = focused?.dataset?.emiExtra;
+  const caret = focused?.selectionStart;
+  const rows = result.schedule.map((row) => `
+    <tr>
+      <td>${row.month}</td>
+      <td>Y${row.year}</td>
+      <td class="num">${rupee(row.emi, 0)}</td>
+      <td class="num amort-extra">
+        <input type="text" inputmode="decimal" data-emi-extra="${row.month}" value="${esc(extraInputValue(row.month))}" placeholder="0" aria-label="Extra in month ${row.month}" />
+      </td>
+      <td class="num">${rupee(row.interest, 0)}</td>
+      <td class="num">${rupee(row.principal, 0)}</td>
+      <td class="num">${rupee(row.closing, 0)}</td>
+    </tr>`).join("");
+  host.innerHTML = `<div style="overflow:auto">
+    <table class="amort-table">
+      <thead>
+        <tr>
+          <th>Month</th><th>Year</th><th class="num">EMI</th><th class="num">Extra</th>
+          <th class="num">Interest</th><th class="num">Principal</th><th class="num">Balance</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+  if (focusMonth) {
+    const el = host.querySelector(`[data-emi-extra="${focusMonth}"]`);
+    if (el) {
+      el.focus();
+      const pos = Number.isInteger(caret) ? Math.min(caret, el.value.length) : el.value.length;
+      try { el.setSelectionRange(pos, pos); } catch { /* ignore */ }
+    }
+  }
+}
+
+function setEmiExtra(month, raw) {
+  const n = Finance.parseInrInput(raw);
+  const value = Number.isFinite(n) && n > 0 ? n : 0;
+  if (!calcState.emiExtras) calcState.emiExtras = {};
+  if (value > 0) calcState.emiExtras[month] = value;
+  else delete calcState.emiExtras[month];
+}
+
 function renderCalcResults() {
   const result = Finance.runCalculator(calcKind, calcState);
   const errBox = $("calc-errors");
@@ -1261,21 +1321,31 @@ function renderCalcResults() {
     $("calc-stats").innerHTML = "";
     $("calc-kicker").textContent = "Fix the inputs";
     destroyChart("calc-chart");
+    renderAmortTable(null);
     return;
   }
   if (errBox) errBox.textContent = "";
   $("calc-kicker").textContent = result.kicker;
   if (result.kind === "emi") {
     $("calc-hero").textContent = rupee(result.hero);
+    const tenureLabel = result.monthsSaved
+      ? `${result.months} months · ${result.monthsSaved} saved`
+      : `${result.months} months`;
     $("calc-stats").innerHTML =
       statPair("Principal", rupee(result.principal), "Total interest", rupee(result.interest)) +
-      statPair("Total payable", rupee(result.total), "Tenure", `${result.months} months`);
+      statPair("Total payable", rupee(result.total), "Tenure", tenureLabel) +
+      (result.extra > 0
+        ? statPair("Extra paid", rupee(result.extra), "Interest saved", rupee(result.interestSaved))
+        : "");
+    renderAmortTable(result);
   } else if (result.kind === "swp") {
+    renderAmortTable(null);
     $("calc-hero").textContent = rupee(result.hero);
     $("calc-stats").innerHTML =
       statPair("Withdrawn", rupee(result.withdrawn), "Invested", rupee(result.invested)) +
       statPair("Est. gain", rupee(result.returns), result.depleted ? "Lasted" : "Tenure", `${result.months} months`);
   } else {
+    renderAmortTable(null);
     $("calc-hero").textContent = rupee(result.hero);
     $("calc-stats").innerHTML = statPair("Invested amount", rupee(result.invested), "Est. returns", rupee(result.returns));
   }
@@ -1975,6 +2045,19 @@ $("calc-tabs").addEventListener("click", (e) => {
   calcKind = b.dataset.calc;
   [...e.currentTarget.children].forEach((x) => x.classList.toggle("on", x === b));
   renderCalc();
+});
+$("calc-amort").addEventListener("input", (e) => {
+  const inp = e.target.closest("[data-emi-extra]");
+  if (!inp) return;
+  setEmiExtra(inp.dataset.emiExtra, inp.value);
+  clearTimeout(calcTimer);
+  calcTimer = setTimeout(renderCalcResults, 180);
+});
+$("calc-amort").addEventListener("change", (e) => {
+  const inp = e.target.closest("[data-emi-extra]");
+  if (!inp) return;
+  setEmiExtra(inp.dataset.emiExtra, inp.value);
+  renderCalcResults();
 });
 
 $("overlay").addEventListener("change", (e) => {

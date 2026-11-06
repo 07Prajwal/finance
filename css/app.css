@@ -421,6 +421,16 @@ tr.sold-row { cursor: pointer; }
 .tabs button.on { background: var(--ink); color: var(--white); }
 
 .calc-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.amort-wrap { max-height: min(70vh, 640px); overflow: auto; margin-top: 12px; }
+.amort-table { min-width: 640px; }
+.amort-table input {
+  width: 108px;
+  height: 36px;
+  padding: 0 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.amort-extra { width: 124px; }
 .slider-row { margin-bottom: 20px; }
 .slider-row header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .slider-row label { font-size: 15px; }

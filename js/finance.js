@@ -754,35 +754,79 @@ export function computeLumpsum(lump, rate, years) {
   };
 }
 
-export function computeEmi(loan, loanRate, tenure) {
+function emiPayment(loan, monthlyRate, months) {
+  if (!(months > 0)) return 0;
+  if (!monthlyRate) return loan / months;
+  const f = Math.pow(1 + monthlyRate, months);
+  return (loan * monthlyRate * f) / (f - 1);
+}
+
+/**
+ * Reducing-balance EMI. extras is { [monthNumber]: extraRupees }.
+ * Scheduled EMI stays the same; extra in a month goes to principal after that month's interest.
+ */
+export function computeEmi(loan, loanRate, tenure, extras = {}) {
   const r = loanRate / 12 / 100;
   const n = tenure * 12;
-  const emi = r ? (loan * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1) : loan / n;
-  const total = emi * n;
+  const emi = emiPayment(loan, r, n);
+  const originalTotal = emi * n;
+  const originalInterest = originalTotal - loan;
   let bal = loan;
   let interestPaid = 0;
+  let extraPaid = 0;
+  let paid = 0;
+  const schedule = [];
   const yearly = [];
   for (let t = 1; t <= n; t++) {
-    const interest = bal * r;
-    const prin = emi - interest;
-    bal = Math.max(0, bal - prin);
+    if (bal <= 0.005) break;
+    const opening = bal;
+    const interest = opening * r;
+    const due = opening + interest;
+    const extraWanted = Math.max(0, Number(extras[t]) || 0);
+    const emiPaid = Math.min(emi, due);
+    const extra = Math.min(extraWanted, Math.max(0, due - emiPaid));
+    const installment = emiPaid + extra;
+    const principal = Math.min(opening, installment - interest);
+    bal = Math.max(0, opening - principal);
     interestPaid += interest;
-    if (t % 12 === 0) {
+    extraPaid += extra;
+    paid += installment;
+    schedule.push({
+      month: t,
+      year: Math.ceil(t / 12),
+      opening,
+      emi: emiPaid,
+      extra,
+      interest,
+      principal,
+      closing: bal,
+    });
+    const done = bal <= 0.005;
+    if (done) bal = 0;
+    if (t % 12 === 0 || done) {
       yearly.push({
-        year: t / 12,
+        year: Math.ceil(t / 12),
         invested: loan - bal,
         returns: interestPaid,
         value: emi,
       });
     }
+    if (done) break;
   }
+  const months = schedule.length;
   return {
     kind: "emi",
     hero: emi,
     principal: loan,
-    interest: total - loan,
-    total,
-    months: n,
+    interest: interestPaid,
+    extra: extraPaid,
+    total: paid,
+    months,
+    originalMonths: n,
+    monthsSaved: Math.max(0, n - months),
+    originalInterest,
+    interestSaved: Math.max(0, originalInterest - interestPaid),
+    schedule,
     yearly,
     chartInvestedLabel: "Principal repaid",
     chartReturnsLabel: "Interest paid",
@@ -878,7 +922,9 @@ export function runCalculator(kind, state) {
   if (kind === "swp") {
     return { ok: true, ...computeSwp(state.swpCorpus, state.swpMonthly, state.rate, state.years) };
   }
-  if (kind === "emi") return { ok: true, ...computeEmi(state.loan, state.loanRate, state.tenure) };
+  if (kind === "emi") {
+    return { ok: true, ...computeEmi(state.loan, state.loanRate, state.tenure, state.emiExtras) };
+  }
   return { ok: false, errors: ["Unknown calculator"] };
 }
 
