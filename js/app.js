@@ -1320,6 +1320,12 @@ function renderAmortTable(result) {
       if (input) input.disabled = true;
     }
   }
+  const bulkTo = $("bulk-to");
+  if (bulkTo) {
+    bulkTo.max = total;
+    if (!bulkTo.value || Number(bulkTo.value) > total || bulkTo.value === bulkTo.dataset.last) bulkTo.value = total;
+    bulkTo.dataset.last = String(total);
+  }
   const summary = $("calc-amort-summary");
   if (summary) {
     summary.textContent = result.monthsSaved
@@ -2085,6 +2091,23 @@ $("calc-amort").addEventListener("change", (e) => {
   if (!inp) return;
   setEmiExtra(inp.dataset.emiExtra, inp.value);
   inp.value = extraInputValue(inp.dataset.emiExtra);
+  clearTimeout(calcTimer);
+  renderCalcResults();
+});
+$("bulk-apply").addEventListener("click", () => {
+  const err = $("bulk-error");
+  const total = Number($("calc-amort").querySelector("table")?.dataset.months) || 0;
+  const amount = Finance.parseInrInput($("bulk-amount").value);
+  const from = Math.floor(Number($("bulk-from").value) || 1);
+  const to = Math.floor(Number($("bulk-to").value) || total);
+  if (!Number.isFinite(amount) || amount <= 0) { err.textContent = "Enter an extra amount above 0."; return; }
+  if (from < 1 || to > total || from > to) { err.textContent = `Pick a range between month 1 and ${total}.`; return; }
+  err.textContent = "";
+  if (!calcState.emiExtras) calcState.emiExtras = {};
+  for (let m = from; m <= to; m++) calcState.emiExtras[m] = amount;
+  $("calc-amort").querySelectorAll("[data-emi-extra]").forEach((el) => {
+    el.value = extraInputValue(el.dataset.emiExtra);
+  });
   clearTimeout(calcTimer);
   renderCalcResults();
 });

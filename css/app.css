@@ -444,6 +444,9 @@ tr.sold-row { cursor: pointer; }
 .amort-table input:disabled { opacity: 0.35; }
 .amort-table tr.amort-saved td { color: var(--muted); }
 .amort-table tr.amort-saved td:nth-child(3) { color: var(--gain); font-weight: 600; }
+.amort-bulk { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.amort-bulk .btn { height: 44px; }
+@media (max-width: 640px) { .amort-bulk { grid-template-columns: 1fr 1fr; } .amort-bulk .field:first-child { grid-column: 1 / -1; } }
 .amort-summary { margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--gain); }
 .slider-row { margin-bottom: 20px; }
 .slider-row header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }

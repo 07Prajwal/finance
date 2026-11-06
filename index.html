@@ -21,7 +21,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=26" />
+  <link rel="stylesheet" href="css/app.css?v=27" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -306,6 +306,19 @@
               <button class="btn secondary sm" type="button" id="calc-amort-clear" disabled>Clear extras</button>
             </div>
             <p class="tiny" id="calc-amort-note">Scheduled EMI stays the same. Type extra in any month; that amount goes to principal and the rest of the loan is recalculated.</p>
+            <div class="amort-bulk">
+              <label class="field">Extra per month (₹)
+                <input type="text" inputmode="decimal" id="bulk-amount" placeholder="e.g. 5,000" />
+              </label>
+              <label class="field">From month
+                <input type="number" id="bulk-from" min="1" step="1" value="1" />
+              </label>
+              <label class="field">To month
+                <input type="number" id="bulk-to" min="1" step="1" />
+              </label>
+              <button class="btn sm" type="button" id="bulk-apply">Apply to range</button>
+            </div>
+            <p class="field-error" id="bulk-error"></p>
             <p class="amort-summary hidden" id="calc-amort-summary"></p>
             <div class="amort-wrap" id="calc-amort"></div>
           </div>
@@ -319,6 +332,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=26"></script>
+  <script type="module" src="js/app.js?v=27"></script>
 </body>
 </html>
