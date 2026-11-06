@@ -422,15 +422,29 @@ tr.sold-row { cursor: pointer; }
 
 .calc-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .amort-wrap { max-height: min(70vh, 640px); overflow: auto; margin-top: 12px; }
-.amort-table { min-width: 640px; }
+.amort-table { min-width: 720px; table-layout: fixed; }
+.amort-table col.c-month { width: 72px; }
+.amort-table col.c-year { width: 64px; }
+.amort-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
+  border-bottom: 0;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
 .amort-table input {
-  width: 108px;
+  width: 100%;
+  max-width: 120px;
   height: 36px;
   padding: 0 8px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.amort-extra { width: 124px; }
+.amort-table input:disabled { opacity: 0.35; }
+.amort-table tr.amort-saved td { color: var(--muted); }
+.amort-table tr.amort-saved td:nth-child(3) { color: var(--gain); font-weight: 600; }
+.amort-summary { margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--gain); }
 .slider-row { margin-bottom: 20px; }
 .slider-row header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .slider-row label { font-size: 15px; }

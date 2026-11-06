@@ -21,7 +21,7 @@
       }
     } catch (e) { /* ignore */ }
   </script>
-  <link rel="stylesheet" href="css/app.css?v=25" />
+  <link rel="stylesheet" href="css/app.css?v=26" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -60,17 +60,17 @@
   <div id="local-banner" class="banner hidden">Data on this device only until Supabase is connected — iPhone and Mac will not share logs yet.</div>
 
   <div id="app-shell" class="app-shell">
-    <nav class="nav">
-      <div class="nav-inner">
+  <nav class="nav">
+    <div class="nav-inner">
         <a class="wordmark" href="#calculators">Finance</a>
-        <div class="nav-links">
+      <div class="nav-links">
           <a href="#home" data-nav="home" class="auth-only">Overview</a>
           <a href="#expenses" data-nav="expenses" class="auth-only">Expenses</a>
           <a href="#portfolio" data-nav="portfolio" class="auth-only">Portfolio</a>
           <a href="#income" data-nav="income" class="auth-only">Income</a>
-          <a href="#calculators" data-nav="calculators">Calculators</a>
+        <a href="#calculators" data-nav="calculators">Calculators</a>
           <button class="nav-cta owner-only" type="button" id="nav-add-expense">Log expense</button>
-        </div>
+      </div>
         <div class="nav-meta">
           <span class="role-chip auth-only" id="role-chip"></span>
           <button class="theme-toggle" type="button" id="theme-toggle" data-theme-toggle aria-pressed="false">Dark</button>
@@ -109,16 +109,16 @@
               <div class="band-chart"><canvas id="home-spend-chart"></canvas></div>
             </div>
           </section>
-        </div>
-      </section>
+      </div>
+    </section>
 
-      <section id="expenses" class="page">
-        <div class="hero">
-          <div class="kicker">Expense tracker</div>
-          <h1>See where it goes.</h1>
+    <section id="expenses" class="page">
+      <div class="hero">
+        <div class="kicker">Expense tracker</div>
+        <h1>See where it goes.</h1>
           <p class="lead">Log spending, then see it by category, type, and month.</p>
-        </div>
-        <div class="wrap section" style="padding-top:0">
+      </div>
+      <div class="wrap section" style="padding-top:0">
           <div class="split">
             <span class="status" id="expense-status"></span>
             <button class="btn sm owner-only" type="button" id="add-expense">Add expense</button>
@@ -165,65 +165,65 @@
               <div class="row-actions">
                 <button type="button" class="btn ghost sm" id="act-clear">Clear</button>
                 <button type="button" class="btn secondary sm" id="act-viewall">View all</button>
-              </div>
-            </div>
+          </div>
+        </div>
             <div class="filter-bar" id="activity-filters">
               <select id="act-month" aria-label="Activity month"></select>
               <select id="act-type" aria-label="Activity type"></select>
               <select id="act-category" aria-label="Activity category"></select>
               <select id="act-account" aria-label="Activity account"></select>
               <input id="act-notes" type="search" placeholder="Search notes" autocomplete="off" />
-            </div>
+        </div>
             <p class="tiny" id="activity-meta"></p>
-            <div style="overflow:auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th><th>Type</th><th>Category</th><th>Account</th><th>Notes</th><th class="num">Amount</th>
+          <div style="overflow:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Type</th><th>Category</th><th>Account</th><th>Notes</th><th class="num">Amount</th>
                     <th class="owner-only"></th>
-                  </tr>
-                </thead>
-                <tbody id="expense-rows"></tbody>
+                </tr>
+              </thead>
+              <tbody id="expense-rows"></tbody>
                 <tfoot id="expense-foot"></tfoot>
-              </table>
-            </div>
+            </table>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section id="portfolio" class="page">
-        <div class="hero">
-          <div class="kicker">Investments</div>
+    <section id="portfolio" class="page">
+      <div class="hero">
+        <div class="kicker">Investments</div>
           <h1>Stocks, funds, FDs.</h1>
           <p class="lead">Live prices when the market feed allows it. Buys and sells update cost, average, and realised gain.</p>
-        </div>
-        <div class="wrap section" style="padding-top:0">
-          <div class="split">
+      </div>
+      <div class="wrap section" style="padding-top:0">
+        <div class="split">
             <p class="status" id="quote-status">Using last saved prices.</p>
-            <div class="row-actions">
+          <div class="row-actions">
               <button class="btn sm" id="refresh-quotes" type="button">Update live prices</button>
               <button class="btn secondary sm owner-only" id="new-buy" type="button">New buy</button>
               <button class="btn secondary sm owner-only" id="add-fd" type="button">Add FD</button>
             </div>
+        </div>
+        <div class="metrics" id="pf-metrics"></div>
+        <div class="grid-2" style="margin:20px 0">
+          <div class="card">
+            <h3>Allocation</h3>
+            <div class="chart-box"><canvas id="alloc-chart"></canvas></div>
           </div>
-          <div class="metrics" id="pf-metrics"></div>
-          <div class="grid-2" style="margin:20px 0">
-            <div class="card">
-              <h3>Allocation</h3>
-              <div class="chart-box"><canvas id="alloc-chart"></canvas></div>
-            </div>
-            <div class="card">
-              <h3>Gain by sleeve</h3>
-              <div class="chart-box"><canvas id="sleeve-chart"></canvas></div>
-            </div>
+          <div class="card">
+            <h3>Gain by sleeve</h3>
+            <div class="chart-box"><canvas id="sleeve-chart"></canvas></div>
           </div>
-          <div class="tabs" id="pf-tabs">
+        </div>
+        <div class="tabs" id="pf-tabs">
             <button class="on" data-sleeve="indian" type="button">Indian stocks</button>
             <button data-sleeve="mf" type="button">Mutual funds</button>
             <button data-sleeve="foreign" type="button">Foreign stocks</button>
             <button data-sleeve="fd" type="button">Fixed deposits</button>
-          </div>
-          <div class="card">
+        </div>
+        <div class="card">
             <div class="chart-head">
               <h3 id="pf-table-title">Holdings</h3>
               <div class="row-actions" id="pf-holding-tools">
@@ -233,10 +233,10 @@
                 <button type="button" class="btn ghost sm" id="pf-sort-clear">Clear</button>
               </div>
             </div>
-            <div style="overflow:auto">
-              <table>
-                <thead id="pf-head"></thead>
-                <tbody id="pf-rows"></tbody>
+          <div style="overflow:auto">
+            <table>
+              <thead id="pf-head"></thead>
+              <tbody id="pf-rows"></tbody>
                 <tfoot id="pf-foot"></tfoot>
               </table>
             </div>
@@ -273,41 +273,45 @@
                   <tr id="income-total-row" class="income-total hidden"></tr>
                 </thead>
                 <tbody id="income-rows"></tbody>
-              </table>
-            </div>
+            </table>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section id="calculators" class="page">
-        <div class="hero">
-          <div class="kicker">Planning tools</div>
+    <section id="calculators" class="page">
+      <div class="hero">
+        <div class="kicker">Planning tools</div>
           <h1>SIP, lumpsum, SWP, EMI.</h1>
           <p class="lead">Monthly SIP and a one-time lumpsum in one plan. Step-up is optional. SWP shows what is left after a monthly withdrawal.</p>
-        </div>
-        <div class="wrap section" style="padding-top:0">
-          <div class="tabs" id="calc-tabs">
+      </div>
+      <div class="wrap section" style="padding-top:0">
+        <div class="tabs" id="calc-tabs">
             <button class="on" data-calc="invest" type="button">SIP + Lumpsum</button>
             <button data-calc="swp" type="button">SWP</button>
             <button data-calc="emi" type="button">EMI</button>
-          </div>
-          <div class="calc-layout">
-            <div class="card" id="calc-controls"></div>
-            <div class="card">
-              <p class="tiny" id="calc-kicker">Estimated value</p>
-              <div class="result-hero" id="calc-hero">—</div>
-              <div class="result-grid" id="calc-stats"></div>
-              <div class="chart-box" style="margin-top:24px"><canvas id="calc-chart"></canvas></div>
-            </div>
-          </div>
-          <div class="card hidden" id="calc-amort-card" style="margin-top:20px">
-            <h3>Your amortization details</h3>
-            <p class="tiny" id="calc-amort-note">Scheduled EMI stays the same. Type extra in any month; that amount goes to principal and the rest of the loan is recalculated.</p>
-            <div class="amort-wrap" id="calc-amort"></div>
+        </div>
+        <div class="calc-layout">
+          <div class="card" id="calc-controls"></div>
+          <div class="card">
+            <p class="tiny" id="calc-kicker">Estimated value</p>
+            <div class="result-hero" id="calc-hero">—</div>
+            <div class="result-grid" id="calc-stats"></div>
+            <div class="chart-box" style="margin-top:24px"><canvas id="calc-chart"></canvas></div>
           </div>
         </div>
-      </section>
-    </main>
+          <div class="card hidden" id="calc-amort-card" style="margin-top:20px">
+            <div class="chart-head">
+              <h3>Your amortization details</h3>
+              <button class="btn secondary sm" type="button" id="calc-amort-clear" disabled>Clear extras</button>
+            </div>
+            <p class="tiny" id="calc-amort-note">Scheduled EMI stays the same. Type extra in any month; that amount goes to principal and the rest of the loan is recalculated.</p>
+            <p class="amort-summary hidden" id="calc-amort-summary"></p>
+            <div class="amort-wrap" id="calc-amort"></div>
+          </div>
+      </div>
+    </section>
+  </main>
 
   </div>
 
@@ -315,6 +319,6 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module" src="js/app.js?v=25"></script>
+  <script type="module" src="js/app.js?v=26"></script>
 </body>
 </html>

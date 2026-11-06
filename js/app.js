@@ -1268,40 +1268,67 @@ function renderAmortTable(result) {
     return;
   }
   card.classList.remove("hidden");
-  const focused = document.activeElement;
-  const focusMonth = focused?.dataset?.emiExtra;
-  const caret = focused?.selectionStart;
-  const rows = result.schedule.map((row) => `
-    <tr>
-      <td>${row.month}</td>
-      <td>Y${row.year}</td>
-      <td class="num">${rupee(row.emi, 0)}</td>
-      <td class="num amort-extra">
-        <input type="text" inputmode="decimal" data-emi-extra="${row.month}" value="${esc(extraInputValue(row.month))}" placeholder="0" aria-label="Extra in month ${row.month}" />
-      </td>
-      <td class="num">${rupee(row.interest, 0)}</td>
-      <td class="num">${rupee(row.principal, 0)}</td>
-      <td class="num">${rupee(row.closing, 0)}</td>
-    </tr>`).join("");
-  host.innerHTML = `<div style="overflow:auto">
-    <table class="amort-table">
+  const total = result.originalMonths;
+  let table = host.querySelector("table.amort-table");
+  if (!table || Number(table.dataset.months) !== total) {
+    const rows = [];
+    for (let m = 1; m <= total; m++) {
+      rows.push(`<tr data-month="${m}">
+        <td>${m}</td>
+        <td>Y${Math.ceil(m / 12)}</td>
+        <td class="num"></td>
+        <td class="num amort-extra">
+          <input type="text" inputmode="decimal" data-emi-extra="${m}" value="${esc(extraInputValue(m))}" placeholder="0" aria-label="Extra in month ${m}" />
+        </td>
+        <td class="num"></td>
+        <td class="num"></td>
+        <td class="num"></td>
+      </tr>`);
+    }
+    host.innerHTML = `<table class="amort-table" data-months="${total}">
+      <colgroup>
+        <col class="c-month" /><col class="c-year" /><col /><col /><col /><col /><col />
+      </colgroup>
       <thead>
         <tr>
           <th>Month</th><th>Year</th><th class="num">EMI</th><th class="num">Extra</th>
           <th class="num">Interest</th><th class="num">Principal</th><th class="num">Balance</th>
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>`;
-  if (focusMonth) {
-    const el = host.querySelector(`[data-emi-extra="${focusMonth}"]`);
-    if (el) {
-      el.focus();
-      const pos = Number.isInteger(caret) ? Math.min(caret, el.value.length) : el.value.length;
-      try { el.setSelectionRange(pos, pos); } catch { /* ignore */ }
+      <tbody>${rows.join("")}</tbody>
+    </table>`;
+    table = host.querySelector("table.amort-table");
+  }
+  const trs = table.tBodies[0].rows;
+  for (let i = 0; i < trs.length; i++) {
+    const cells = trs[i].cells;
+    const row = result.schedule[i];
+    const input = cells[3].querySelector("input");
+    if (row) {
+      trs[i].classList.remove("amort-saved");
+      cells[2].textContent = rupee(row.emi, 0);
+      cells[4].textContent = rupee(row.interest, 0);
+      cells[5].textContent = rupee(row.principal, 0);
+      cells[6].textContent = rupee(row.closing, 0);
+      if (input) input.disabled = false;
+    } else {
+      trs[i].classList.add("amort-saved");
+      cells[2].textContent = "Saved";
+      cells[4].textContent = "—";
+      cells[5].textContent = "—";
+      cells[6].textContent = rupee(0, 0);
+      if (input) input.disabled = true;
     }
   }
+  const summary = $("calc-amort-summary");
+  if (summary) {
+    summary.textContent = result.monthsSaved
+      ? `Loan closes in month ${result.months} instead of ${total}. ${result.monthsSaved} months saved, marked Saved below.`
+      : "";
+    summary.classList.toggle("hidden", !result.monthsSaved);
+  }
+  const clear = $("calc-amort-clear");
+  if (clear) clear.disabled = !Object.keys(calcState.emiExtras || {}).length;
 }
 
 function setEmiExtra(month, raw) {
@@ -2057,6 +2084,14 @@ $("calc-amort").addEventListener("change", (e) => {
   const inp = e.target.closest("[data-emi-extra]");
   if (!inp) return;
   setEmiExtra(inp.dataset.emiExtra, inp.value);
+  inp.value = extraInputValue(inp.dataset.emiExtra);
+  clearTimeout(calcTimer);
+  renderCalcResults();
+});
+$("calc-amort-clear").addEventListener("click", () => {
+  calcState.emiExtras = {};
+  $("calc-amort").querySelectorAll("[data-emi-extra]").forEach((el) => { el.value = ""; });
+  clearTimeout(calcTimer);
   renderCalcResults();
 });
 
